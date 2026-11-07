@@ -50,4 +50,13 @@
     <string name="update_retry">Retry</string>
     <string name="update_later">Not now</string>
     <string name="update_cancel">Cancel download</string>
+    <string name="simple_details">Details</string>
+    <string name="simple_theme">Appearance</string>
+    <string name="simple_theme_system">System</string>
+    <string name="simple_theme_light">Day</string>
+    <string name="simple_theme_dark">Night</string>
+    <string name="simple_cancel">Cancel</string>
+    <string name="simple_tap_hint">Tap to find and connect automatically</string>
+    <string name="simple_no_internet">No internet connection. Connect to Wi-Fi or mobile data first.</string>
+    <string name="simple_disconnect_warning">If Android “Block connections without VPN” is enabled, internet stays blocked after disconnecting. If its status is unknown, check VPN settings.</string>
 </resources>

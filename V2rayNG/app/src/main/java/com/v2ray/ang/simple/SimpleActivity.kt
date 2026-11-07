@@ -45,6 +45,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.MaterialTheme
+import com.v2ray.ang.ui.compose.ThemeManager
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
@@ -108,24 +112,21 @@ private val Vazirmatn = FontFamily(
     Font(R.font.vazirmatn_bold, FontWeight.Bold),
 )
 
-private val BgTop = Color(0xFF070B14)
-private val BgMid = Color(0xFF0B1526)
-private val BgBottom = Color(0xFF05090F)
-private val CardBg = Color(0xFF101C2F)
-private val CardBorder = Color(0xFF1D2C45)
-private val TextPrimary = Color(0xFFF3F7FF)
-private val TextSecondary = Color(0xFFB7C5DB)
-private val TextMuted = Color(0xFF93A3BC)
-private val AccentGreen = Color(0xFF3EE0A6)
-private val AccentBlue = Color(0xFF6A97FF)
-private val AccentRed = Color(0xFFFF8F84)
+private val BgTop: Color @Composable get() = MaterialTheme.colorScheme.background
+private val BgMid: Color @Composable get() = MaterialTheme.colorScheme.background
+private val BgBottom: Color @Composable get() = MaterialTheme.colorScheme.background
+private val CardBg: Color @Composable get() = MaterialTheme.colorScheme.surfaceContainer
+private val CardBorder: Color @Composable get() = MaterialTheme.colorScheme.outlineVariant
+private val TextPrimary: Color @Composable get() = MaterialTheme.colorScheme.onSurface
+private val TextSecondary: Color @Composable get() = MaterialTheme.colorScheme.onSurfaceVariant
+private val TextMuted: Color @Composable get() = MaterialTheme.colorScheme.onSurfaceVariant
+private val AccentGreen: Color @Composable get() = MaterialTheme.colorScheme.primary
+private val AccentBlue: Color @Composable get() = MaterialTheme.colorScheme.primary
+private val AccentRed: Color @Composable get() = MaterialTheme.colorScheme.error
 
 /**
- * Single screen client: a find button and a connect button, no profile names.
- *
- * Press "find connection point" -> probes profiles with a real Xray outbound until
- * [SimpleConfig.TARGET_WORKING] healthy ones are found. Press "connect" -> the fastest
- * healthy profile is used.
+ * One central action: retest cached points, search when needed, then connect.
+ * Busy taps cancel the complete request; only verified tunnel health shows connected.
  */
 class SimpleActivity : BaseComponentActivity() {
     private val updater by lazy { androidx.lifecycle.ViewModelProvider(this)[com.v2ray.ang.update.UpdateViewModel::class.java] }
@@ -179,6 +180,13 @@ class SimpleActivity : BaseComponentActivity() {
         )
     }
 
+    private val flow = SingleActionPolicy()
+    private var flowToken = 0L
+    private var userCancelled = false
+    private var flowJob: kotlinx.coroutines.Job? = null
+    private var showTheme by mutableStateOf(false)
+    private var showDetails by mutableStateOf(false)
+    private var showDisconnectWarning by mutableStateOf(false)
     private var booting by mutableStateOf(true)
     private var downloading by mutableStateOf(false)
     private var testing by mutableStateOf(false)
@@ -256,6 +264,7 @@ class SimpleActivity : BaseComponentActivity() {
 
     private val vpnPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            if (!pendingConnect || !flow.accepts(flowToken)) return@registerForActivityResult
             if (result.resultCode == RESULT_OK) {
                 pendingConnect = false
                 launchConnect()
@@ -306,6 +315,8 @@ class SimpleActivity : BaseComponentActivity() {
     private val serviceReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             val safe = intent ?: return
+            if (userCancelled) return
+            if (testing || downloading) return
             when (safe.getIntExtra("key", 0)) {
                 AppConfig.MSG_STATE_START -> {
                     connected = false
@@ -330,7 +341,7 @@ class SimpleActivity : BaseComponentActivity() {
                 AppConfig.MSG_STATE_START_FAILURE -> {
                     connecting = false
                     connected = false
-                    if (connectAttempt < winners.size) {
+                    if (flow.accepts(flowToken) && connectAttempt < winners.size) {
                         // Silent failover: try the next best healthy profile.
                         launchConnect()
                     } else {
@@ -400,11 +411,11 @@ class SimpleActivity : BaseComponentActivity() {
             bestDelay = winners.firstOrNull()?.delay ?: 0L
             tested = withContext(Dispatchers.IO) { SimpleConfig.lastTested(this@SimpleActivity) }
             if (known == 0) {
-                syncSubscription(firstRun = true)
+                booting = false
             } else {
                 booting = false
                 working = winners.size
-                statusLine = if (winners.isNotEmpty()) getString(R.string.simple_ready)
+                if (!connected && !connecting) statusLine = if (winners.isNotEmpty()) getString(R.string.simple_ready)
                 else getString(R.string.simple_offline)
             }
         }
@@ -417,7 +428,8 @@ class SimpleActivity : BaseComponentActivity() {
             statusLine = getString(R.string.simple_loading)
         } else {
         }
-        lifecycleScope.launch {
+        val syncToken = flowToken
+        flowJob = lifecycleScope.launch {
             val result = withContext(Dispatchers.IO) {
                 runCatching {
                     MmkvManager.encodeSubscription(
@@ -440,6 +452,7 @@ class SimpleActivity : BaseComponentActivity() {
                     -1
                 }
             }
+            if (!flow.accepts(syncToken)) return@launch
             downloading = false
             booting = false
             if (result > 0) {
@@ -454,9 +467,9 @@ class SimpleActivity : BaseComponentActivity() {
                 tested = 0
                 working = winners.size
                 errorLine = ""
-                statusLine = if (winners.isNotEmpty()) getString(R.string.simple_ready)
-                else getString(R.string.simple_offline)
+                if (flow.accepts(syncToken)) startTest()
             } else {
+                flow.cancel()
                 errorLine = getString(R.string.simple_list_failed)
                 statusLine = getString(R.string.simple_error)
             }
@@ -523,9 +536,52 @@ class SimpleActivity : BaseComponentActivity() {
             winners.isEmpty() -> getString(R.string.simple_no_points)
             else -> getString(R.string.simple_ready)
         }
+        if (flow.searchFinished(flowToken, saved.isNotEmpty()) == Action.CONNECT) {
+            connectAttempt = 0
+            launchConnect()
+        }
     }
 
     // ------------------------------------------------------------- actions
+
+    private fun hasInternet(): Boolean {
+        val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+        return cm.allNetworks.any { n -> cm.getNetworkCapabilities(n)?.let {
+            it.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                it.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+        } == true }
+    }
+
+    private fun primaryAction() {
+        if (connected) {
+            querySystemVpnStatus()
+            showDisconnectWarning = true // Unknown is explicitly caveated, never presented as off.
+            return
+        }
+        if (testing || connecting || downloading || flow.requested) { cancelFlow(); return }
+        if (booting) return
+        // The search service retests cached winners before doing a broad scan.
+        if (flow.begin(hasInternet(), false) == Action.NONE) {
+            errorLine = getString(R.string.simple_no_internet)
+            return
+        }
+        userCancelled = false
+        flowToken = flow.generation
+        if (total == 0) syncSubscription(true) else startTest()
+    }
+
+    private fun cancelFlow() {
+        userCancelled = true
+        flow.cancel()
+        pendingConnect = false
+        flowJob?.cancel()
+        downloading = false
+        connecting = false
+        connected = false
+        cancelTest()
+        LauncherManager.stopService(this)
+        errorLine = ""
+    }
 
     private fun startTest() {
         if (downloading || connecting) return
@@ -563,25 +619,12 @@ class SimpleActivity : BaseComponentActivity() {
         else getString(R.string.simple_offline)
     }
 
-    private fun toggleConnection() {
-        if (connected || connecting) {
-            pendingConnect = false
-            connectAttempt = winners.size
-            connected = false
-            connecting = false
-            LauncherManager.stopService(this)
-            return
-        }
-        if (winners.isEmpty()) return
-        errorLine = ""
-        connectAttempt = 0
-        launchConnect()
-    }
-
     private fun launchConnect() {
+        if (!flow.accepts(flowToken)) return
         val winner = winners.getOrNull(connectAttempt)
         if (winner == null) {
             connecting = false
+            flow.cancel()
             errorLine = getString(R.string.simple_none_connected)
             return
         }
@@ -596,6 +639,7 @@ class SimpleActivity : BaseComponentActivity() {
     }
 
     private fun startVpn(winner: SimpleConfig.Winner) {
+        if (!flow.accepts(flowToken)) return
         connectAttempt++
         connecting = true
         statusLine = getString(R.string.simple_connecting)
@@ -639,6 +683,31 @@ class SimpleActivity : BaseComponentActivity() {
     override fun ScreenContent() {
         UpdateDialog()
         KillSwitchDialog()
+        if (showTheme) AlertDialog(
+            onDismissRequest = { showTheme = false },
+            title = { Text(str(R.string.simple_theme), fontFamily = Vazirmatn) },
+            text = { Column {
+                listOf("0" to R.string.simple_theme_system, "1" to R.string.simple_theme_light, "2" to R.string.simple_theme_dark).forEach { (mode, label) ->
+                    TextButton(onClick = { ThemeManager.setThemeMode(mode); showTheme = false }) { Text(str(label), fontFamily = Vazirmatn) }
+                }
+            } }, confirmButton = {}
+        )
+        if (showDetails) AlertDialog(
+            onDismissRequest = { showDetails = false },
+            title = { Text(str(R.string.simple_details), fontFamily = Vazirmatn) },
+            text = { Column {
+                Text("${num(winners.size)} ${str(R.string.simple_points)}", fontFamily = Vazirmatn)
+                TextButton(onClick = { showDetails = false; showKillSwitch = true }) { Text(str(R.string.kill_switch_title), fontFamily = Vazirmatn) }
+                TextButton(onClick = { showDetails = false; showLanguageDialog = true }) { Text(str(R.string.simple_language), fontFamily = Vazirmatn) }
+            } }, confirmButton = { TextButton(onClick = { showDetails = false }) { Text(str(R.string.simple_ok)) } }
+        )
+        if (showDisconnectWarning) AlertDialog(
+            onDismissRequest = { showDisconnectWarning = false },
+            title = { Text(str(R.string.simple_disconnect), fontFamily = Vazirmatn) },
+            text = { Text(str(R.string.simple_disconnect_warning), fontFamily = Vazirmatn) },
+            confirmButton = { TextButton(onClick = { showDisconnectWarning = false; cancelFlow() }) { Text(str(R.string.simple_disconnect)) } },
+            dismissButton = { TextButton(onClick = { showDisconnectWarning = false }) { Text(str(R.string.simple_ok)) } }
+        )
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -668,7 +737,7 @@ class SimpleActivity : BaseComponentActivity() {
             ) {
                 Header(
                     onLanguage = { showLanguageDialog = true },
-                    onReloadSubscription = { if (!testing && !downloading) syncSubscription(false) }
+                    onReloadSubscription = { showDetails = true }
                 )
 
                 if (downloading) {
@@ -686,28 +755,23 @@ class SimpleActivity : BaseComponentActivity() {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(1f),
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState()),
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         StatusRing(
                             connected = connected,
                             busy = connecting || testing || downloading,
-                            title = statusLine.ifBlank { str(R.string.simple_ready) },
-                            subtitle = if (connected && bestDelay > 0) "${num(bestDelay)} ms" else null,
-                            onClick = if (!booting && !downloading &&
-                                (connected || connecting || winners.isNotEmpty())
-                            ) {
-                                { toggleConnection() }
-                            } else {
-                                null
-                            }
+                            title = if (connected) str(R.string.simple_connected) else if (connecting || testing || downloading) statusLine else str(R.string.simple_connect),
+                            subtitle = if (connecting || testing || downloading) str(R.string.simple_cancel) else if (connected) str(R.string.simple_disconnect) else null,
+                            onClick = { primaryAction() }
                         )
 
                         Spacer(Modifier.height(16.dp))
 
                         Text(
-                            text = str(R.string.simple_find_best),
+                            text = str(if (connected) R.string.simple_connected_hint else if (connecting || testing || downloading) R.string.simple_search_hint else R.string.simple_tap_hint),
                             color = TextSecondary,
                             fontSize = 15.5.sp,
                             lineHeight = 25.sp,
@@ -725,8 +789,8 @@ class SimpleActivity : BaseComponentActivity() {
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(14.dp))
-                                    .background(Color(0xFF2A1620))
-                                    .border(1.dp, Color(0xFF432330), RoundedCornerShape(14.dp))
+                                    .background(MaterialTheme.colorScheme.errorContainer)
+                                    .border(1.dp, AccentRed.copy(alpha = 0.3f), RoundedCornerShape(14.dp))
                                     .padding(horizontal = 14.dp, vertical = 10.dp)
                             ) {
                                 Text(
@@ -743,40 +807,11 @@ class SimpleActivity : BaseComponentActivity() {
 
                         Spacer(Modifier.height(18.dp))
 
-                        PointsCard(
-                            value = working.coerceAtLeast(winners.size),
-                            label = str(R.string.simple_points)
-                        )
                     }
                 }
-
-                Spacer(Modifier.height(18.dp))
-
-                ActionButton(
-                    step = str(R.string.simple_step_one),
-                    label = if (testing) str(R.string.simple_cancel_find) else str(R.string.simple_find),
-                    primary = false,
-                    danger = testing,
-                    enabled = !booting && !downloading && !connecting,
-                    loading = testing,
-                    onClick = { if (testing) cancelTest() else startTest() }
-                )
-
-                Spacer(Modifier.height(12.dp))
-
-                ActionButton(
-                    step = str(R.string.simple_step_two),
-                    label = when {
-                        connecting -> str(R.string.simple_connecting)
-                        connected -> str(R.string.simple_disconnect)
-                        else -> str(R.string.simple_connect)
-                    },
-                    primary = true,
-                    danger = connected,
-                    enabled = !booting && !downloading && !connecting && (connected || winners.isNotEmpty()),
-                    loading = connecting,
-                    onClick = { toggleConnection() }
-                )
+                TextButton(onClick = { showDetails = true }) {
+                    Text(str(R.string.simple_details), fontFamily = Vazirmatn, color = TextSecondary)
+                }
             }
         }
 
@@ -803,8 +838,8 @@ class SimpleActivity : BaseComponentActivity() {
                 modifier = Modifier
                     .size(44.dp)
                     .clip(RoundedCornerShape(14.dp))
-                    .background(Brush.linearGradient(listOf(Color(0xFF17364F), Color(0xFF0D2136))))
-                    .border(1.dp, Color(0xFF244661), RoundedCornerShape(14.dp))
+                    .background(CardBg)
+                    .border(1.dp, CardBorder, RoundedCornerShape(14.dp))
                     .combinedClickable(onClick = { showKillSwitch = true }, onLongClick = onReloadSubscription),
                 contentAlignment = Alignment.Center
             ) {
@@ -829,10 +864,10 @@ class SimpleActivity : BaseComponentActivity() {
                 Spacer(Modifier.height(2.dp))
                 Text(
                     text = str(R.string.simple_subtitle),
-                    color = Color(0xFFA6B6CC),
+                    color = TextSecondary,
                     fontSize = 12.sp,
                     fontFamily = Vazirmatn,
-                    maxLines = 1,
+                    maxLines = 3,
                     overflow = TextOverflow.Ellipsis
                 )
             }
@@ -841,12 +876,12 @@ class SimpleActivity : BaseComponentActivity() {
                 modifier = Modifier
                     .size(40.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(Color(0xFF13233A))
-                    .border(1.dp, Color(0xFF2A4062), RoundedCornerShape(12.dp))
-                    .clickable(onClick = onLanguage),
+                    .background(CardBg)
+                    .border(1.dp, CardBorder, RoundedCornerShape(12.dp))
+                    .clickable(onClick = { showTheme = true }),
                 contentAlignment = Alignment.Center
             ) {
-                LanguageGlyph(color = Color(0xFF9CD3EA))
+                Text("◐", color = TextPrimary, fontSize = 24.sp)
             }
         }
     }
@@ -866,50 +901,6 @@ class SimpleActivity : BaseComponentActivity() {
             drawLine(
                 color, Offset(0f, size.height / 2f), Offset(size.width, size.height / 2f),
                 strokeWidth = stroke
-            )
-        }
-    }
-
-    @Composable
-    private fun PointsCard(value: Int, label: String) {
-        val animated by animateIntAsState(targetValue = value, animationSpec = tween(450), label = "points")
-        Row(
-            modifier = Modifier
-                .clip(RoundedCornerShape(18.dp))
-                .background(CardBg)
-                .border(1.dp, CardBorder, RoundedCornerShape(18.dp))
-                .padding(horizontal = 22.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Canvas(modifier = Modifier.size(20.dp)) {
-                val ink = AccentGreen
-                val dot = 2.6.dp.toPx()
-                drawCircle(ink.copy(alpha = 0.45f), dot, Offset(4.dp.toPx(), 5.dp.toPx()))
-                drawCircle(ink.copy(alpha = 0.7f), dot, Offset(13.dp.toPx(), 4.dp.toPx()))
-                drawCircle(ink, dot, Offset(9.dp.toPx(), 14.dp.toPx()))
-                val st = 1.2.dp.toPx()
-                drawLine(ink.copy(alpha = 0.45f), Offset(4.dp.toPx(), 5.dp.toPx()), Offset(9.dp.toPx(), 14.dp.toPx()), st)
-                drawLine(ink.copy(alpha = 0.45f), Offset(13.dp.toPx(), 4.dp.toPx()), Offset(9.dp.toPx(), 14.dp.toPx()), st)
-                drawLine(ink.copy(alpha = 0.45f), Offset(4.dp.toPx(), 5.dp.toPx()), Offset(13.dp.toPx(), 4.dp.toPx()), st)
-            }
-
-            Spacer(Modifier.width(12.dp))
-
-            Text(
-                text = num(animated),
-                color = AccentGreen,
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold,
-                fontFamily = Vazirmatn
-            )
-
-            Spacer(Modifier.width(10.dp))
-
-            Text(
-                text = label,
-                color = TextSecondary,
-                fontSize = 13.5.sp,
-                fontFamily = Vazirmatn
             )
         }
     }
@@ -972,7 +963,7 @@ class SimpleActivity : BaseComponentActivity() {
         val target = when {
             connected -> AccentGreen
             busy -> AccentBlue
-            else -> Color(0xFF3B4C69)
+            else -> AccentGreen
         }
         val accent by animateColorAsState(target, tween(450), label = "accent")
 
@@ -986,7 +977,7 @@ class SimpleActivity : BaseComponentActivity() {
         )
 
         Box(
-            modifier = Modifier.size(212.dp),
+            modifier = Modifier.size((240 * LocalDensity.current.fontScale.coerceAtMost(1.5f)).dp),
             contentAlignment = Alignment.Center
         ) {
             Box(
@@ -1003,13 +994,14 @@ class SimpleActivity : BaseComponentActivity() {
                     )
             )
 
+            val track = CardBorder
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val strokeWidth = 11.dp.toPx()
                 val inset = strokeWidth / 2f
                 val arcSize = Size(size.width - strokeWidth, size.height - strokeWidth)
 
                 drawArc(
-                    color = Color(0xFF16243A),
+                    color = track,
                     startAngle = 0f,
                     sweepAngle = 360f,
                     useCenter = false,
@@ -1077,15 +1069,15 @@ class SimpleActivity : BaseComponentActivity() {
 
             Box(
                 modifier = Modifier
-                    .size(158.dp)
+                    .size((158 * LocalDensity.current.fontScale.coerceAtMost(1.5f)).dp)
                     .graphicsLayer {
                         val s = if (busy && !connected) pulse else discScale
                         scaleX = s
                         scaleY = s
                     }
                     .clip(CircleShape)
-                    .background(Brush.verticalGradient(listOf(Color(0xFF111E33), Color(0xFF0A1424))))
-                    .border(1.dp, Color(0xFF1E2E49), CircleShape)
+                    .background(CardBg)
+                    .border(1.dp, CardBorder, CircleShape)
                     .clickable(enabled = onClick != null) { onClick?.invoke() },
                 contentAlignment = Alignment.Center
             ) {
@@ -1093,7 +1085,7 @@ class SimpleActivity : BaseComponentActivity() {
                     Text(
                         text = title,
                         color = TextPrimary,
-                        fontSize = 24.sp,
+                        fontSize = 20.sp,
                         fontWeight = FontWeight.Bold,
                         fontFamily = Vazirmatn,
                         textAlign = TextAlign.Center
@@ -1109,123 +1101,6 @@ class SimpleActivity : BaseComponentActivity() {
                         )
                     }
                 }
-            }
-        }
-    }
-
-    @Composable
-    private fun ActionButton(
-        step: String,
-        label: String,
-        primary: Boolean,
-        danger: Boolean,
-        enabled: Boolean,
-        loading: Boolean,
-        onClick: () -> Unit
-    ) {
-        val shape = RoundedCornerShape(18.dp)
-        val gradient = when {
-            !primary -> null
-            !enabled -> listOf(Color(0xFF121D2E), Color(0xFF101A2A))
-            danger -> listOf(Color(0xFF77323F), Color(0xFF9A4152))
-            else -> listOf(Color(0xFF12A97E), Color(0xFF0A6E56))
-        }
-        val surface = when {
-            primary -> null
-            danger -> Color(0xFF331D28)
-            else -> Color(0xFF233651)
-        }
-        val borderColor = when {
-            danger -> Color(0xFF63394A)
-            else -> Color(0xFF3D5D87)
-        }
-        val ink = when {
-            danger -> Color(0xFFFFC2B6)
-            primary -> Color.White
-            else -> Color(0xFFF2F7FF)
-        }
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(58.dp)
-                .shadow(
-                    elevation = if (primary && enabled) 16.dp else 0.dp,
-                    shape = shape,
-                    spotColor = if (danger) Color(0x6677020F) else Color(0x5512A97E)
-                )
-                .clip(shape)
-                .background(
-                    when {
-                        gradient != null -> Brush.horizontalGradient(gradient)
-                        else -> Brush.horizontalGradient(listOf(surface!!, surface))
-                    }
-                )
-                .then(
-                    if (primary) Modifier else Modifier.border(1.dp, borderColor, shape)
-                )
-                .clickable(enabled = enabled, onClick = onClick),
-            contentAlignment = Alignment.Center
-        ) {
-            Box(Modifier.fillMaxSize()) {
-                Text(
-                    text = label,
-                    color = if (enabled) ink else Color(0xFF5A6A82),
-                    fontSize = 16.5.sp,
-                    fontWeight = if (primary) FontWeight.Bold else FontWeight.Medium,
-                    fontFamily = Vazirmatn,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .fillMaxWidth()
-                        .padding(horizontal = 58.dp)
-                )
-                StepBadge(
-                    step = step,
-                    loading = loading,
-                    ink = if (enabled) ink else Color(0xFF5A6A82),
-                    modifier = Modifier
-                        .align(Alignment.CenterStart)
-                        .padding(start = 18.dp)
-                )
-            }
-        }
-    }
-
-    @Composable
-    private fun StepBadge(
-        step: String,
-        loading: Boolean,
-        ink: Color,
-        modifier: Modifier = Modifier
-    ) {
-        Box(
-            modifier = modifier
-                .size(26.dp)
-                .clip(CircleShape)
-                .background(Color.White.copy(alpha = 0.14f))
-                .border(1.dp, Color.White.copy(alpha = 0.22f), CircleShape),
-            contentAlignment = Alignment.Center
-        ) {
-            if (loading) {
-                val angle = rememberFrameAngle(active = true, periodMs = 900)
-                Canvas(modifier = Modifier.size(14.dp)) {
-                    drawArc(
-                        color = ink,
-                        startAngle = angle,
-                        sweepAngle = 280f,
-                        useCenter = false,
-                        style = Stroke(width = 1.8.dp.toPx(), cap = StrokeCap.Round)
-                    )
-                }
-            } else {
-                Text(
-                    text = step,
-                    color = ink,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = Vazirmatn
-                )
             }
         }
     }

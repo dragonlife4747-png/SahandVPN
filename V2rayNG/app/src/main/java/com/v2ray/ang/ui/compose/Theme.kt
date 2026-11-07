@@ -27,98 +27,100 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
+// Day palette: warm off-white with deep teal
 private val LightColor = lightColorScheme(
-    primary = Color(0xFF000000), // Black
-    onPrimary = Color(0xFFFFFFFF), // White
-    primaryContainer = Color(0xFFE0E0E0), // Light Gray
-    onPrimaryContainer = Color(0xFF000000), // Black
-    secondary = Color(0xFFf97910), // Orange
-    onSecondary = Color(0xFFFFFFFF), // White
-    secondaryContainer = Color(0xFFFFE8D6), // Pale Orange
-    onSecondaryContainer = Color(0xFF2B1700), // Dark Brown
-    tertiary = Color(0xFF009966), // Green
-    onTertiary = Color(0xFFFFFFFF), // White
-    tertiaryContainer = Color(0xFFA0F2D0), // Light Green
-    onTertiaryContainer = Color(0xFF00201A), // Dark Teal
-    error = Color(0xFFBA1A1A), // Red
-    errorContainer = Color(0xFFFFDAD6), // Light Red
-    onError = Color(0xFFFFFFFF), // White
-    onErrorContainer = Color(0xFF410002), // Dark Red
-    background = Color(0xFFFFFFFF), // White
-    onBackground = Color(0xFF1C1B1F), // Near Black
-    surface = Color(0xFFFFFFFF), // White
-    onSurface = Color(0xFF1C1B1F), // Near Black
-    surfaceVariant = Color(0xFFE7E0EC), // Light Purple Gray
-    onSurfaceVariant = Color(0xFF49454F), // Dark Gray
-    outline = Color(0xFF79747E), // Medium Gray
-    outlineVariant = Color(0xFFCAC4D0), // Light Gray
-    inverseSurface = Color(0xFF313033), // Dark Gray
-    inverseOnSurface = Color(0xFFF4EFF4), // Very Light Gray
-    inversePrimary = Color(0xFFC0C0C0), // Silver Gray
-    scrim = Color(0xFF000000), // Black
-    surfaceTint = Color(0xFF000000), // Black
-    surfaceContainerLowest = Color(0xFFFFFFFF), // White
-    surfaceContainerLow = Color(0xFFF7F7F7), // Very Light Gray
-    surfaceContainer = Color(0xFFF1F1F1), // Light Gray
-    surfaceContainerHigh = Color(0xFFEBEBEB), // Light Gray
-    surfaceContainerHighest = Color(0xFFE5E5E5), // Light Gray
+    primary = Color(0xFF006E5E),        // Deep teal
+    onPrimary = Color(0xFFFFFFFF),       // White
+    primaryContainer = Color(0xFFC8F0EA), // Pale teal
+    onPrimaryContainer = Color(0xFF00211E), // Dark teal
+    secondary = Color(0xFF4A6B5A),       // Muted sage
+    onSecondary = Color(0xFFFFFFFF),     // White
+    secondaryContainer = Color(0xFFCCE0D4), // Light sage
+    onSecondaryContainer = Color(0xFF082015), // Dark sage
+    tertiary = Color(0xFF6B5B00),        // Warm gold
+    onTertiary = Color(0xFFFFFFFF),      // White
+    tertiaryContainer = Color(0xFFFFDE7F), // Pale gold
+    onTertiaryContainer = Color(0xFF221E00), // Dark gold
+    error = Color(0xFFBA1A1A),
+    errorContainer = Color(0xFFFFDAD6),
+    onError = Color(0xFFFFFFFF),
+    onErrorContainer = Color(0xFF410002),
+    background = Color(0xFFF8F9F7),      // Warm off-white
+    onBackground = Color(0xFF1C1E1D),    // Near black
+    surface = Color(0xFFF8F9F7),         // Warm off-white
+    onSurface = Color(0xFF1C1E1D),
+    surfaceVariant = Color(0xFFDEE5E0),  // Light teal-gray
+    onSurfaceVariant = Color(0xFF434946),
+    outline = Color(0xFF737976),
+    outlineVariant = Color(0xFFC3C9C5),
+    inverseSurface = Color(0xFF2E3130),
+    inverseOnSurface = Color(0xFFF0F1EF),
+    inversePrimary = Color(0xFFA0D8C8),
+    scrim = Color(0xFF000000),
+    surfaceTint = Color(0xFF006E5E),
+    surfaceContainerLowest = Color(0xFFFFFFFF),
+    surfaceContainerLow = Color(0xFFF2F4F2),
+    surfaceContainer = Color(0xFFECEEEB),
+    surfaceContainerHigh = Color(0xFFE6E8E5),
+    surfaceContainerHighest = Color(0xFFE0E2DF),
 )
 
+// Night palette: ink/navy with emerald accent
 private val DarkColor = darkColorScheme(
-    primary = Color(0xFFC0C0C0), // Silver Gray
-    onPrimary = Color(0xFF303030), // Dark Gray
-    primaryContainer = Color(0xFF474747), // Gray
-    onPrimaryContainer = Color(0xFFE0E0E0), // Light Gray
-    secondary = Color(0xFFf97910), // Orange
-    onSecondary = Color(0xFF4E2600), // Dark Brown
-    secondaryContainer = Color(0xFF6F3800), // Brown
-    onSecondaryContainer = Color(0xFFFFE8D6), // Pale Orange
-    tertiary = Color(0xFF83D6B5), // Mint Green
-    onTertiary = Color(0xFF00382E), // Dark Teal
-    tertiaryContainer = Color(0xFF005143), // Teal
-    onTertiaryContainer = Color(0xFFA0F2D0), // Light Green
-    error = Color(0xFFFFB4AB), // Light Red
-    errorContainer = Color(0xFF93000A), // Dark Red
-    onError = Color(0xFF690005), // Deep Red
-    onErrorContainer = Color(0xFFFFDAD6), // Light Red
-    background = Color(0xFF1C1B1F), // Near Black
-    onBackground = Color(0xFFE6E1E5), // Light Gray
-    surface = Color(0xFF1C1B1F), // Near Black
-    onSurface = Color(0xFFE6E1E5), // Light Gray
-    surfaceVariant = Color(0xFF49454F), // Dark Gray
-    onSurfaceVariant = Color(0xFFCAC4D0), // Light Gray
-    outline = Color(0xFF938F99), // Grayish Purple
-    outlineVariant = Color(0xFF49454F), // Dark Gray
-    inverseSurface = Color(0xFFE6E1E5), // Light Gray
-    inverseOnSurface = Color(0xFF1C1B1F), // Near Black
-    inversePrimary = Color(0xFF000000), // Black
-    scrim = Color(0xFF000000), // Black
-    surfaceTint = Color(0xFFC0C0C0), // Silver Gray
-    surfaceContainerLowest = Color(0xFF0F0F12), // Near Black
-    surfaceContainerLow = Color(0xFF1A191D), // Dark Gray
-    surfaceContainer = Color(0xFF1E1D21), // Dark Gray
-    surfaceContainerHigh = Color(0xFF282729), // Dark Gray
-    surfaceContainerHighest = Color(0xFF333234), // Dark Gray
+    primary = Color(0xFF5EE8C4),         // Emerald
+    onPrimary = Color(0xFF00211E),       // Dark teal
+    primaryContainer = Color(0xFF005448), // Deep teal
+    onPrimaryContainer = Color(0xFFC8F0EA),
+    secondary = Color(0xFFB0C9BA),       // Light sage
+    onSecondary = Color(0xFF1F3328),
+    secondaryContainer = Color(0xFF354E40),
+    onSecondaryContainer = Color(0xFFCCE0D4),
+    tertiary = Color(0xFFFFD24D),        // Warm gold
+    onTertiary = Color(0xFF221E00),
+    tertiaryContainer = Color(0xFF514A00),
+    onTertiaryContainer = Color(0xFFFFDE7F),
+    error = Color(0xFFFFB4AB),
+    errorContainer = Color(0xFF93000A),
+    onError = Color(0xFF690005),
+    onErrorContainer = Color(0xFFFFDAD6),
+    background = Color(0xFF0D1311),      // Ink/navy
+    onBackground = Color(0xFFE0E2DF),
+    surface = Color(0xFF0D1311),
+    onSurface = Color(0xFFE0E2DF),
+    surfaceVariant = Color(0xFF434946),
+    onSurfaceVariant = Color(0xFFC3C9C5),
+    outline = Color(0xFF8E9490),
+    outlineVariant = Color(0xFF434946),
+    inverseSurface = Color(0xFFE0E2DF),
+    inverseOnSurface = Color(0xFF2E3130),
+    inversePrimary = Color(0xFF006E5E),
+    scrim = Color(0xFF000000),
+    surfaceTint = Color(0xFF5EE8C4),
+    surfaceContainerLowest = Color(0xFF080E0C),
+    surfaceContainerLow = Color(0xFF141C18),
+    surfaceContainer = Color(0xFF18201D),
+    surfaceContainerHigh = Color(0xFF222A26),
+    surfaceContainerHighest = Color(0xFF2D3531),
 )
 
-// Semantic Colors
-val colorPing = Color(0xFF009966) // Green
-val colorPingRed = Color(0xFFFF0099) // Pink Red
-val colorConfigType = Color(0xFFf97910) // Orange
-val colorFabActive = Color(0xFFf97910) // Orange
-val colorFabInactiveLight = Color(0xFF9C9C9C) // Gray
-val colorFabInactiveDark = Color(0xFF646464) // Dark Gray
-val dividerColorLight = Color(0xFFE0E0E0) // Light Gray
-val dividerColorDark = Color(0xFF424242) // Dark Gray
+// Semantic colors (accessible on both palettes)
+val colorPing = Color(0xFF009966)
+val colorPingRed = Color(0xFFFF0099)
+val colorConfigType = Color(0xFFf97910)
+val colorFabActive = Color(0xFFf97910)
+val colorFabInactiveLight = Color(0xFF9C9C9C)
+val colorFabInactiveDark = Color(0xFF646464)
+val dividerColorLight = Color(0xFFE0E0E0)
+val dividerColorDark = Color(0xFF424242)
 
 // Toast Colors 85%
-val toastNormalBgLight = Color(0xD9353A3E) // Dark Gray
-val toastNormalBgDark = Color(0xD94A4F54) // Darker Gray
-val toastSuccessBg = Color(0xD9388E3C) // Green
-val toastErrorBg = Color(0xD9D50000) // Red
-val toastInfoBg = Color(0xD93F51B5) // Indigo Blue
-val toastIconCircleBg = Color(0x33FFFFFF) // Semi-transparent White
-val toastTextColor = Color.White // White
+val toastNormalBgLight = Color(0xD9353A3E)
+val toastNormalBgDark = Color(0xD94A4F54)
+val toastSuccessBg = Color(0xD9388E3C)
+val toastErrorBg = Color(0xD9D50000)
+val toastInfoBg = Color(0xD93F51B5)
+val toastIconCircleBg = Color(0x33FFFFFF)
+val toastTextColor = Color.White
 
 object ThemeManager {
     private val _themeMode = MutableStateFlow(
@@ -172,7 +174,6 @@ fun AppTheme(
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }
-
         darkTheme -> DarkColor
         else -> LightColor
     }

@@ -110,6 +110,13 @@ class SimpleTestService : Service() {
             }
         }
 
+        if (working.isNotEmpty()) {
+            if (SimpleConfig.updateSearch(this, runId, working, "done")) {
+                publishFinish(tested.get(), total, working.toList())
+            }
+            return
+        }
+
         // Group every profile by its unique server endpoint; duplicates share one TCP probe.
         val endpoints = LinkedHashMap<String, MutableList<String>>()
         val endpointHostPort = HashMap<String, Pair<String, Int>>()

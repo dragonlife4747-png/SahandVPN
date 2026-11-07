@@ -50,4 +50,13 @@
     <string name="update_retry">تلاش دوباره</string>
     <string name="update_later">فعلاً نه</string>
     <string name="update_cancel">لغو دریافت</string>
+    <string name="simple_details">جزئیات</string>
+    <string name="simple_theme">ظاهر برنامه</string>
+    <string name="simple_theme_system">همراه گوشی</string>
+    <string name="simple_theme_light">روز</string>
+    <string name="simple_theme_dark">شب</string>
+    <string name="simple_cancel">لغو</string>
+    <string name="simple_tap_hint">برای یافتن و اتصال خودکار لمس کنید</string>
+    <string name="simple_no_internet">اینترنت در دسترس نیست. ابتدا وای‌فای یا اینترنت همراه را روشن کنید.</string>
+    <string name="simple_disconnect_warning">اگر «مسدود کردن اتصال بدون VPN» در اندروید فعال باشد، پس از قطع اتصال اینترنت مسدود می‌ماند. اگر وضعیت مشخص نیست، تنظیمات VPN را بررسی کنید.</string>
 </resources>
