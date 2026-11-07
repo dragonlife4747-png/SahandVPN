@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="simple_subtitle">اتصال خودکار به بهترین نقطه</string>
+    <string name="simple_find">یافتن نقطه اتصال</string>
+    <string name="simple_find_best">یافتن بهترین نقطه اتصال</string>
+    <string name="simple_cancel_find">لغو جست‌وجو</string>
+    <string name="simple_connect">اتصال</string>
+    <string name="simple_disconnect">قطع اتصال</string>
+    <string name="simple_connecting">در حال اتصال…</string>
+    <string name="simple_ready">آماده</string>
+    <string name="simple_connected">متصل</string>
+    <string name="simple_offline">آفلاین</string>
+    <string name="simple_searching">در حال جست‌وجو</string>
+    <string name="simple_checking">در حال بررسی</string>
+    <string name="simple_error">خطا</string>
+    <string name="simple_points">نقطه اتصال</string>
+    <string name="simple_points_found">%1$s نقطه اتصال پیدا شد</string>
+    <string name="simple_points_partial">فقط %1$s نقطه اتصال پیدا شد</string>
+    <string name="simple_no_points">نقطه اتصالی پیدا نشد</string>
+    <string name="simple_no_points_hint">برای یافتن نقطهٔ سالم دوباره جست‌وجو کنید</string>
+    <string name="simple_loading">در حال دریافت لیست</string>
+    <string name="simple_loading_first">برای اولین بار، لیست سرورها دانلود می‌شود</string>
+    <string name="simple_loading_more">در حال به‌روزرسانی لیست سرورها…</string>
+    <string name="simple_list_ready">%1$s کانفیگ آمادهٔ جست‌وجوست</string>
+    <string name="simple_list_failed">دریافت لیست ناموفق بود — اینترنت را بررسی کنید</string>
+    <string name="simple_list_failed_hint">برای دریافت مجدد، آرم برنامه را نگه دارید</string>
+    <string name="simple_scan_progress">%1$s از %2$s سرور بررسی شد</string>
+    <string name="simple_search_progress">%1$s بررسی شد — %2$s سالم</string>
+    <string name="simple_search_hint">بهترین نقطهٔ اتصال جست‌وجو می‌شود…</string>
+    <string name="simple_connect_chosen">بهترین نقطهٔ اتصال انتخاب شد</string>
+    <string name="simple_connected_hint">اتصال امن برقرار است</string>
+    <string name="simple_ready_points">%1$s نقطه اتصال آماده است</string>
+    <string name="simple_vpn_denied">اجازهٔ ساخت VPN داده نشد</string>
+    <string name="simple_connect_failed">اتصال ناموفق بود</string>
+    <string name="simple_none_connected">هیچ‌کدام از نقاط پیدا شده وصل نشدند — دوباره جست‌وجو کنید</string>
+    <string name="simple_cancelled">جست‌وجو لغو شد</string>
+    <string name="simple_language">زبان</string>
+    <string name="simple_language_system">زبان گوشی</string>
+    <string name="simple_ok">باشه</string>
+    <string name="simple_step_one">۱</string>
+    <string name="simple_step_two">۲</string>
+    <string name="simple_testing_notification">در حال یافتن نقطهٔ اتصال…</string>
+</resources>

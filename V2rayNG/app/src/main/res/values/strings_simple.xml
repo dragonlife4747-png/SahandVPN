@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="simple_subtitle">Automatic connection to the best point</string>
+    <string name="simple_find">Find connection point</string>
+    <string name="simple_find_best">Finding the best connection point</string>
+    <string name="simple_cancel_find">Cancel search</string>
+    <string name="simple_connect">Connect</string>
+    <string name="simple_disconnect">Disconnect</string>
+    <string name="simple_connecting">Connecting…</string>
+    <string name="simple_ready">Ready</string>
+    <string name="simple_connected">Connected</string>
+    <string name="simple_offline">Offline</string>
+    <string name="simple_searching">Searching</string>
+    <string name="simple_checking">Checking</string>
+    <string name="simple_error">Error</string>
+    <string name="simple_points">Connection points</string>
+    <string name="simple_points_found">%1$s connection points found</string>
+    <string name="simple_points_partial">Only %1$s connection points found</string>
+    <string name="simple_no_points">No connection point found</string>
+    <string name="simple_no_points_hint">Search again to find a working point</string>
+    <string name="simple_loading">Loading the list</string>
+    <string name="simple_loading_first">First run — the server list is downloading</string>
+    <string name="simple_loading_more">Updating the server list…</string>
+    <string name="simple_list_ready">%1$s configs ready to search</string>
+    <string name="simple_list_failed">Could not download the list — check your connection</string>
+    <string name="simple_list_failed_hint">Touch and hold the logo to reload the list</string>
+    <string name="simple_scan_progress">Checking %1$s of %2$s servers</string>
+    <string name="simple_search_progress">%1$s checked — %2$s working</string>
+    <string name="simple_search_hint">Looking for the best connection point…</string>
+    <string name="simple_connect_chosen">Best connection point selected</string>
+    <string name="simple_connected_hint">Connection is secure</string>
+    <string name="simple_ready_points">%1$s connection points ready</string>
+    <string name="simple_vpn_denied">VPN permission was denied</string>
+    <string name="simple_connect_failed">Connection failed</string>
+    <string name="simple_none_connected">None of the found points connected — search again</string>
+    <string name="simple_cancelled">Search cancelled</string>
+    <string name="simple_language">Language</string>
+    <string name="simple_language_system">System language</string>
+    <string name="simple_ok">OK</string>
+    <string name="simple_step_one">1</string>
+    <string name="simple_step_two">2</string>
+    <string name="simple_testing_notification">Searching for a connection point…</string>
+</resources>
