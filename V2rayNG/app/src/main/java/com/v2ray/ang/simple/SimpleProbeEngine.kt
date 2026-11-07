@@ -26,7 +26,7 @@ import java.util.concurrent.TimeUnit
  * measured in parallel through local ports instead of starting one core per profile. That keeps
  * memory flat and avoids the native deadlock that appeared with several concurrent core instances.
  */
-class SimpleProbeEngine(private val context: Context) {
+class SimpleProbeEngine(private val context: Context, private val resources: SearchResources = SearchResources()) {
 
     data class ProbeResult(
         val guid: String,
@@ -88,7 +88,7 @@ class SimpleProbeEngine(private val context: Context) {
      * @param deep also verify TLS and measure throughput (slower, use for the finalists only)
      */
     fun probe(guids: List<String>, deep: Boolean, timeoutMs: Long = 6_000): List<ProbeResult> {
-        if (guids.isEmpty()) return emptyList()
+        if (guids.isEmpty() || resources.closed || Thread.currentThread().isInterrupted) return emptyList()
 
         val slots = mutableListOf<Slot>()
         val outbounds = JsonArray()
@@ -176,7 +176,10 @@ class SimpleProbeEngine(private val context: Context) {
 
         val started = try {
             val controller = CoreNativeManager.newCoreController(NoopCallback)
+            resources.own(controller) { it.stopLoop() }
+            if (resources.closed) return emptyList()
             controller.startLoop(config, 0)
+            if (resources.closed) { controller.stopLoop(); return emptyList() }
             startedController = controller
             true
         } catch (e: Throwable) {
@@ -208,14 +211,15 @@ class SimpleProbeEngine(private val context: Context) {
 
     private fun probeAll(slots: List<Slot>, deep: Boolean, timeoutMs: Long): List<ProbeResult> {
         val results = CopyOnWriteArrayList<ProbeResult>()
-        val pool = Executors.newFixedThreadPool(minOf(8, slots.size))
+        val pool = resources.pool(Executors.newFixedThreadPool(minOf(8, slots.size)))
         slots.forEach { slot ->
             pool.execute {
+                if (resources.closed) return@execute
                 val delay = httpDelay(slot.port, timeoutMs, secure = false)
                 if (delay <= 0) return@execute
                 var httpsOk = false
                 var bytesPerSecond = 0L
-                if (deep) {
+                if (deep && !resources.closed) {
                     httpsOk = httpDelay(slot.port, timeoutMs, secure = true) > 0
                     if (httpsOk) bytesPerSecond = throughput(slot.port, timeoutMs)
                 }
@@ -224,17 +228,24 @@ class SimpleProbeEngine(private val context: Context) {
         }
         pool.shutdown()
         runCatching { pool.awaitTermination(timeoutMs * 2, TimeUnit.MILLISECONDS) }
-        return results.toList()
+        pool.shutdownNow()
+        return if (resources.closed) emptyList() else results.toList()
     }
 
     private fun client(port: Int, timeoutMs: Long): OkHttpClient =
-        OkHttpClient.Builder()
+        resources.own(OkHttpClient.Builder()
             .proxy(Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", port)))
             .connectTimeout(timeoutMs, TimeUnit.MILLISECONDS)
             .readTimeout(timeoutMs, TimeUnit.MILLISECONDS)
             .callTimeout(timeoutMs + 2_000, TimeUnit.MILLISECONDS)
             .retryOnConnectionFailure(false)
-            .build()
+            .build()) { it.dispatcher.cancelAll(); it.connectionPool.evictAll(); it.dispatcher.executorService.shutdownNow() }
+
+    private fun execute(client: OkHttpClient, request: Request): okhttp3.Response {
+        val call = resources.own(client.newCall(request)) { it.cancel() }
+        if (resources.closed) throw java.io.IOException("Search cancelled")
+        return call.execute()
+    }
 
     /** Round trip of a 204 request through the loopback SOCKS inbound, or -1. */
     private fun httpDelay(port: Int, timeoutMs: Long, secure: Boolean): Long {
@@ -242,7 +253,7 @@ class SimpleProbeEngine(private val context: Context) {
         return try {
             val request = Request.Builder().url(url).header("Connection", "close").get().build()
             val started = System.currentTimeMillis()
-            client(port, timeoutMs).newCall(request).execute().use { response ->
+            execute(client(port, timeoutMs), request).use { response ->
                 if (response.code in 200..204) System.currentTimeMillis() - started else -1L
             }
         } catch (_: Throwable) {
@@ -260,7 +271,7 @@ class SimpleProbeEngine(private val context: Context) {
             val client = client(port, timeoutMs)
             val started = System.nanoTime()
             var total = 0L
-            client.newCall(request).execute().use { response ->
+            execute(client, request).use { response ->
                 if (!response.isSuccessful) return 0L
                 val body = response.body ?: return 0L
                 val buffer = ByteArray(16 * 1024)

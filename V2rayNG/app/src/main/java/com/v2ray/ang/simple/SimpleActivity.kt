@@ -503,8 +503,13 @@ class SimpleActivity : BaseComponentActivity() {
             val stalled = lastProgressAt > 0 &&
                 System.currentTimeMillis() - lastProgressAt > 25_000L
             val state = SimpleConfig.read(this@SimpleActivity)
-            if (state.runId == searchRunId && (state.phase != "running" || stalled)) {
+            if (state.runId == searchRunId && state.phase != "running") {
                 applyTestOutcome(saved)
+                return
+            }
+            if (stalled) {
+                cancelTest()
+                flow.cancel()
                 return
             }
             handler.postDelayed(this, 1200)
@@ -594,7 +599,7 @@ class SimpleActivity : BaseComponentActivity() {
     }
 
     private fun startTest() {
-        if (downloading || connecting) return
+        if (downloading || connecting || connected || !flow.accepts(flowToken)) return
         if (total == 0) {
             syncSubscription(firstRun = true)
             return

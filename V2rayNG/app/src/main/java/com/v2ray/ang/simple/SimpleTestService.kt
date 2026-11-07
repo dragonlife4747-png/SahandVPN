@@ -37,6 +37,20 @@ class SimpleTestService : Service() {
     private var worker: Thread? = null
     private var runId = ""
     private val cancelled = AtomicBoolean(false)
+    private val resources = SearchResources()
+    private var outcome: (() -> Unit)? = null
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val deadline = Runnable { cancelRun() }
+
+    private fun cancelRun() {
+        cancelled.set(true)
+        resources.cancel()
+        worker?.interrupt()
+    }
+
+    private fun completeAfterShutdown() {
+        if (!cancelled.get()) outcome?.invoke()
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -56,7 +70,7 @@ class SimpleTestService : Service() {
         )
 
         if (intent?.getBooleanExtra(EXTRA_CANCEL, false) == true) {
-            cancelled.set(true)
+            cancelRun()
             return START_NOT_STICKY
         }
         if (worker != null) return START_NOT_STICKY
@@ -64,12 +78,32 @@ class SimpleTestService : Service() {
         cancelled.set(false)
         runId = intent?.getStringExtra(SimpleConfig.EXTRA_RUN_ID).orEmpty()
         if (runId.isBlank()) { finishService(); return START_NOT_STICKY }
-        worker = Thread({ runTest() }, "SimpleTestRunner").apply { start() }
+        mainHandler.postDelayed(deadline, 180_000)
+        worker = Thread({
+            try {
+                runTest()
+            } catch (_: InterruptedException) {
+                cancelled.set(true)
+            } catch (e: Throwable) {
+                LogUtil.w(SimpleConfig.logTag(), "SimpleTest: runner failed (${e.javaClass.simpleName})")
+            } finally {
+                resources.close()
+                mainHandler.post {
+                    mainHandler.removeCallbacks(deadline)
+                    NotificationHelper.stopForeground(this)
+                    completeAfterShutdown()
+                    stopSelf()
+                    LogUtil.w(SimpleConfig.logTag(), "SimpleTest: cleanup complete; workers/core stopped")
+                }
+            }
+        }, "SimpleTestRunner").apply { start() }
         return START_NOT_STICKY
     }
 
     override fun onDestroy() {
-        cancelled.set(true)
+        cancelRun()
+        mainHandler.removeCallbacks(deadline)
+        NotificationHelper.stopForeground(this)
         super.onDestroy()
     }
 
@@ -77,8 +111,10 @@ class SimpleTestService : Service() {
         val guids = MmkvManager.decodeServerList(SimpleConfig.SUB_ID)
         val total = guids.size
         if (total == 0) {
-            publishFinish(0, 0, emptyList())
-            finishService()
+            outcome = {
+                SimpleConfig.updateSearch(this, runId, emptyList(), "empty")
+                publishFinish(0, 0, emptyList())
+            }
             return
         }
 
@@ -97,7 +133,7 @@ class SimpleTestService : Service() {
         val cached = SimpleConfig.read(this).backup.map { it.guid }
             .filter { MmkvManager.decodeServerConfig(it) != null }
             .take(SimpleConfig.TARGET_WORKING)
-        val engine = SimpleProbeEngine(this)
+        val engine = SimpleProbeEngine(this, resources)
         if (cached.isNotEmpty() && !cancelled.get()) {
             publish(SimpleConfig.PHASE_PROBING, force = true)
             val results = engine.probe(cached, deep = true, timeoutMs = 6_000)
@@ -111,8 +147,10 @@ class SimpleTestService : Service() {
         }
 
         if (working.isNotEmpty()) {
-            if (SimpleConfig.updateSearch(this, runId, working, "done")) {
-                publishFinish(tested.get(), total, working.toList())
+            outcome = {
+                if (SimpleConfig.updateSearch(this, runId, working, "done")) {
+                    publishFinish(tested.get(), total, working.toList())
+                }
             }
             return
         }
@@ -137,7 +175,7 @@ class SimpleTestService : Service() {
         val history = EndpointHistory(java.io.File(filesDir, "endpoint_history.json"))
         val shuffled = endpoints.keys.filter { history.eligible(it, System.currentTimeMillis()) }
             .shuffled(kotlin.random.Random(System.currentTimeMillis()))
-        val scanner = Executors.newFixedThreadPool(SimpleConfig.TCP_CONCURRENCY)
+        val scanner = resources.pool(Executors.newFixedThreadPool(SimpleConfig.TCP_CONCURRENCY))
         var cursor = 0
         var scannedEndpoints = 0
         var reachableCount = 0
@@ -254,14 +292,13 @@ class SimpleTestService : Service() {
         }
 
         scanner.shutdown()
-        if (cancelled.get()) {
-            finishService()
-            return
-        }
+        if (cancelled.get()) return
 
         val winners = working.sortedBy { it.delay }.take(SimpleConfig.TARGET_WORKING)
-        if (!SimpleConfig.updateSearch(this, runId, winners, if (winners.isEmpty()) "empty" else "done")) {
-            finishService(); return
+        outcome = {
+            if (SimpleConfig.updateSearch(this, runId, winners, if (winners.isEmpty()) "empty" else "done")) {
+                publishFinish(tested.get(), total, winners)
+            }
         }
         LogUtil.w(
             SimpleConfig.logTag(),
@@ -269,15 +306,14 @@ class SimpleTestService : Service() {
                 "${winners.size} healthy out of ${tested.get()} probed, " +
                 "$reachableCount/$scannedEndpoints endpoints reachable"
         )
-        publishFinish(tested.get(), total, winners)
-        finishService()
+        // The runner publishes the terminal outcome only after all resources are closed.
     }
 
     /** Raw TCP connect time in ms, or -1. */
     private fun tcpProbe(host: String, port: Int): Long {
         val start = System.currentTimeMillis()
         return try {
-            Socket().use { socket ->
+            resources.own(Socket()) { it.close() }.use { socket ->
                 socket.connect(InetSocketAddress(host, port), SimpleConfig.TCP_TIMEOUT_MS)
                 System.currentTimeMillis() - start
             }
