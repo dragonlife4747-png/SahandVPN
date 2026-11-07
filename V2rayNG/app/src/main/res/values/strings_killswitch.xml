@@ -1,0 +1,17 @@
+<resources>
+<string name="kill_switch_title">System kill switch</string>
+<string name="kill_switch_settings">Open Android VPN settings</string>
+<string name="kill_switch_on">On</string>
+<string name="kill_switch_off">Off</string>
+<string name="kill_switch_unknown">Unknown — check Android settings</string>
+<string name="kill_switch_status">Always-on VPN: %1$s
+Block connections without VPN: %2$s</string>
+<string name="kill_switch_settings_unavailable">Open Android Settings → Network → VPN manually.</string>
+<string name="kill_switch_explanation">Connect once first. In Android VPN settings, tap the gear beside Sahand VPN and explicitly enable BOTH “Always-on VPN” and “Block connections without VPN”. Always-on alone is not a kill switch. This app cannot enable these switches for you.
+
+Android blocks non-VPN traffic while this VPN is unavailable, within the OS VPN contract. Disconnecting manually can leave the internet blocked until you reconnect or turn blocking off in Android settings.
+
+Apps excluded from the VPN may lose connectivity under blocking; any OS exemption or VPN direct/bypass routing can weaken protection. Blocking does not make direct routes inside a working VPN private. The VPN app must reach its server outside the tunnel. No promise covers OS/OEM exceptions, tethering, or traffic before unlock.
+
+Status is read from the running VPN service on Android 10+. If the service is stopped, or the API is unavailable, check Android settings; unknown does not mean off. No working saved connection? Internet can stay blocked until you disable blocking to search again.</string>
+</resources>

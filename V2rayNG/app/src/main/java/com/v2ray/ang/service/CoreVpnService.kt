@@ -22,6 +22,7 @@ import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.NotificationManager
 import com.v2ray.ang.handler.SettingsManager
 import com.v2ray.ang.root.RootLanSharing
+import com.v2ray.ang.simple.SimpleConfig
 import com.v2ray.ang.util.LogUtil
 import com.v2ray.ang.util.Utils
 import java.lang.ref.SoftReference
@@ -41,6 +42,23 @@ class CoreVpnService : VpnService(), ServiceControl {
         StrictMode.setThreadPolicy(policy)
         CoreServiceManager.serviceControl = SoftReference(this)
     }
+
+    // Bound only by our own UI; do not replace the framework VPN binder.
+    private val statusMessenger = android.os.Messenger(android.os.Handler(android.os.Looper.getMainLooper()) { msg ->
+        val reply = android.os.Message.obtain().apply {
+            data = android.os.Bundle().apply {
+                if (Build.VERSION.SDK_INT >= 29) {
+                    putBoolean("alwaysOn", isAlwaysOn)
+                    putBoolean("lockdown", isLockdownEnabled)
+                }
+            }
+        }
+        runCatching { msg.replyTo?.send(reply) }
+        true
+    })
+
+    override fun onBind(intent: Intent?): android.os.IBinder? =
+        if (intent?.action == "com.sahand.vpn.SYSTEM_STATUS") statusMessenger.binder else super.onBind(intent)
 
     override fun onRevoke() {
         LogUtil.w(AppConfig.TAG, "StartCore-VPN: Permission revoked")
@@ -82,11 +100,13 @@ class CoreVpnService : VpnService(), ServiceControl {
         if (isSystemVpnStart) {
             unlockStart()
         }
+        if (isRunning) return START_STICKY
         if (!tryLockStart()) {
             LogUtil.w(AppConfig.TAG, "StartCore-VPN: Start already in progress")
             return START_NOT_STICKY
         }
         LogUtil.i(AppConfig.TAG, "StartCore-VPN: Service command received, systemVpnStart=$isSystemVpnStart")
+        if (isSystemVpnStart) recoverSavedProfile()
         if (!setupVpnService()) {
             unlockStart()
             // Stop service if setup fails to avoid infinite restart loops (START_STICKY)
@@ -95,6 +115,21 @@ class CoreVpnService : VpnService(), ServiceControl {
         }
         startService()
         return START_STICKY
+    }
+
+    /** Always-on starts can carry no app profile intent. Use only persisted user selection/winners. */
+    private fun recoverSavedProfile() {
+        val selected = MmkvManager.getSelectServer()
+        val fallback = com.v2ray.ang.simple.KillSwitchPolicy.recover(selected,
+            runCatching { SimpleConfig.loadWinners(this).map { it.guid } }.getOrDefault(emptyList())) {
+            MmkvManager.decodeServerConfig(it) != null
+        }
+        if (fallback != null) {
+            MmkvManager.setSelectServer(fallback)
+            LogUtil.i(AppConfig.TAG, "StartCore-VPN: Recovered saved connection point")
+        } else {
+            LogUtil.w(AppConfig.TAG, "StartCore-VPN: No persisted connection point for OS launch")
+        }
     }
 
     override fun getService(): Service {

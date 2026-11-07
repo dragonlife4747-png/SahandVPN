@@ -22,6 +22,8 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -190,6 +192,60 @@ class SimpleActivity : BaseComponentActivity() {
     private var errorLine by mutableStateOf("")
     private var bestDelay by mutableLongStateOf(0L)
     private var winners by mutableStateOf<List<SimpleConfig.Winner>>(emptyList())
+    private var showKillSwitch by mutableStateOf(false)
+    private var osAlwaysOn by mutableStateOf<Boolean?>(null)
+    private var osLockdown by mutableStateOf<Boolean?>(null)
+
+    private fun querySystemVpnStatus() {
+        osAlwaysOn = null
+        osLockdown = null
+        // No BIND_AUTO_CREATE: reading settings must not start a VPN or imply consent.
+        val connection = object : android.content.ServiceConnection {
+            override fun onServiceConnected(name: android.content.ComponentName?, binder: android.os.IBinder?) {
+                val reply = android.os.Messenger(android.os.Handler(mainLooper) { message ->
+                    osAlwaysOn = if (message.data.containsKey("alwaysOn")) message.data.getBoolean("alwaysOn") else null
+                    osLockdown = if (message.data.containsKey("lockdown")) message.data.getBoolean("lockdown") else null
+                    true
+                })
+                runCatching { android.os.Messenger(binder).send(android.os.Message.obtain().apply { replyTo = reply }) }
+            }
+            override fun onServiceDisconnected(name: android.content.ComponentName?) {
+                osAlwaysOn = null
+                osLockdown = null
+            }
+        }
+        val intent = Intent(this, com.v2ray.ang.service.CoreVpnService::class.java).setAction("com.sahand.vpn.SYSTEM_STATUS")
+        if (runCatching { bindService(intent, connection, 0) }.getOrDefault(false)) {
+            android.os.Handler(mainLooper).postDelayed({ runCatching { unbindService(connection) } }, 1500)
+        }
+    }
+
+    private fun openSystemVpnSettings() {
+        for (action in listOf(android.provider.Settings.ACTION_VPN_SETTINGS, android.provider.Settings.ACTION_SETTINGS)) {
+            if (runCatching { startActivity(Intent(action)) }.isSuccess) return
+        }
+        android.widget.Toast.makeText(this, R.string.kill_switch_settings_unavailable, android.widget.Toast.LENGTH_LONG).show()
+    }
+
+    @Composable
+    private fun KillSwitchDialog() {
+        if (!showKillSwitch) return
+        LaunchedEffect(Unit) { querySystemVpnStatus() }
+        fun label(value: Boolean?) = getString(when(value) { true -> R.string.kill_switch_on; false -> R.string.kill_switch_off; null -> R.string.kill_switch_unknown })
+        AlertDialog(
+            onDismissRequest = { showKillSwitch = false },
+            containerColor = CardBg,
+            title = { Text(str(R.string.kill_switch_title), fontFamily = Vazirmatn, color = TextPrimary) },
+            text = { Column(Modifier.height(360.dp).then(Modifier.verticalScroll(rememberScrollState()))) {
+                Text(String.format(str(R.string.kill_switch_status), label(osAlwaysOn), label(osLockdown)), fontFamily = Vazirmatn, color = AccentGreen)
+                Spacer(Modifier.height(12.dp))
+                Text(str(R.string.kill_switch_explanation), fontFamily = Vazirmatn, color = TextSecondary, fontSize = 14.sp)
+            } },
+            confirmButton = { TextButton(onClick = { showKillSwitch = false; openSystemVpnSettings() }) { Text(str(R.string.kill_switch_settings), fontFamily = Vazirmatn) } },
+            dismissButton = { TextButton(onClick = { showKillSwitch = false }) { Text(str(R.string.update_later), fontFamily = Vazirmatn) } }
+        )
+    }
+
     private var showLanguageDialog by mutableStateOf(false)
     private var languageCode by mutableStateOf("auto")
 
@@ -582,6 +638,7 @@ class SimpleActivity : BaseComponentActivity() {
     @Composable
     override fun ScreenContent() {
         UpdateDialog()
+        KillSwitchDialog()
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -748,12 +805,12 @@ class SimpleActivity : BaseComponentActivity() {
                     .clip(RoundedCornerShape(14.dp))
                     .background(Brush.linearGradient(listOf(Color(0xFF17364F), Color(0xFF0D2136))))
                     .border(1.dp, Color(0xFF244661), RoundedCornerShape(14.dp))
-                    .combinedClickable(onClick = {}, onLongClick = onReloadSubscription),
+                    .combinedClickable(onClick = { showKillSwitch = true }, onLongClick = onReloadSubscription),
                 contentAlignment = Alignment.Center
             ) {
                 Image(
                     painter = painterResource(R.drawable.ic_stat_sahand),
-                    contentDescription = null,
+                    contentDescription = str(R.string.kill_switch_title),
                     colorFilter = ColorFilter.tint(AccentGreen),
                     modifier = Modifier.size(22.dp)
                 )
