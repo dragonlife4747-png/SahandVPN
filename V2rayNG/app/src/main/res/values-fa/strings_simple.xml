@@ -40,4 +40,14 @@
     <string name="simple_step_one">۱</string>
     <string name="simple_step_two">۲</string>
     <string name="simple_testing_notification">در حال یافتن نقطهٔ اتصال…</string>
+    <string name="update_title">سهند وی‌پی‌ان %1$s آماده است</string>
+    <string name="update_message">نسخهٔ امضاشده از گیت‌هاب دریافت می‌شود. نصب فقط با تأیید شما در اندروید انجام می‌شود.</string>
+    <string name="update_downloading">در حال دریافت و بررسی به‌روزرسانی…</string>
+    <string name="update_permission">در تنظیمات اندروید، اجازهٔ نصب به سهند وی‌پی‌ان بدهید و سپس نصب را تأیید کنید.</string>
+    <string name="update_error">دریافت یا تأیید به‌روزرسانی ناموفق بود. اینترنت را بررسی و دوباره تلاش کنید.</string>
+    <string name="update_download">دریافت به‌روزرسانی</string>
+    <string name="update_install">نصب به‌روزرسانی</string>
+    <string name="update_retry">تلاش دوباره</string>
+    <string name="update_later">فعلاً نه</string>
+    <string name="update_cancel">لغو دریافت</string>
 </resources>
