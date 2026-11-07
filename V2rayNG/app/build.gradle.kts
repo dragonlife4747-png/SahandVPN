@@ -33,8 +33,8 @@ android {
         applicationId = "com.sahand.vpn"
         minSdk = 24
         targetSdk = 37
-        versionCode = 10011
-        versionName = "1.10"
+        versionCode = 10013
+        versionName = "1.12"
 
         val abiFilterList = (properties["ABI_FILTERS"] as? String)?.split(';')
         splits {

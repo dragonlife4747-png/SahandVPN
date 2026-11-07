@@ -45,6 +45,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.Role
 import androidx.compose.material3.MaterialTheme
 import com.v2ray.ang.ui.compose.ThemeManager
 import androidx.compose.foundation.layout.heightIn
@@ -72,6 +77,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
@@ -185,7 +191,6 @@ class SimpleActivity : BaseComponentActivity() {
     private var userCancelled = false
     private var flowJob: kotlinx.coroutines.Job? = null
     private var showTheme by mutableStateOf(false)
-    private var showDetails by mutableStateOf(false)
     private var showDisconnectWarning by mutableStateOf(false)
     private var booting by mutableStateOf(true)
     private var downloading by mutableStateOf(false)
@@ -227,6 +232,10 @@ class SimpleActivity : BaseComponentActivity() {
             android.os.Handler(mainLooper).postDelayed({ runCatching { unbindService(connection) } }, 1500)
         }
     }
+
+    private var verifiedAt = 0L
+    private fun sessionElapsed(): Long = if (connected && verifiedAt > 0)
+        (android.os.SystemClock.elapsedRealtime() - verifiedAt) / 1000 else 0
 
     private fun openSystemVpnSettings() {
         for (action in listOf(android.provider.Settings.ACTION_VPN_SETTINGS, android.provider.Settings.ACTION_SETTINGS)) {
@@ -324,6 +333,7 @@ class SimpleActivity : BaseComponentActivity() {
                     statusLine = getString(R.string.simple_connecting)
                 }
                 AppConfig.MSG_STATE_RUNNING, AppConfig.MSG_STATE_START_SUCCESS -> {
+                    if (!connected) verifiedAt = android.os.SystemClock.elapsedRealtime()
                     connecting = false
                     connected = true
                     errorLine = ""
@@ -692,15 +702,6 @@ class SimpleActivity : BaseComponentActivity() {
                 }
             } }, confirmButton = {}
         )
-        if (showDetails) AlertDialog(
-            onDismissRequest = { showDetails = false },
-            title = { Text(str(R.string.simple_details), fontFamily = Vazirmatn) },
-            text = { Column {
-                Text("${num(winners.size)} ${str(R.string.simple_points)}", fontFamily = Vazirmatn)
-                TextButton(onClick = { showDetails = false; showKillSwitch = true }) { Text(str(R.string.kill_switch_title), fontFamily = Vazirmatn) }
-                TextButton(onClick = { showDetails = false; showLanguageDialog = true }) { Text(str(R.string.simple_language), fontFamily = Vazirmatn) }
-            } }, confirmButton = { TextButton(onClick = { showDetails = false }) { Text(str(R.string.simple_ok)) } }
-        )
         if (showDisconnectWarning) AlertDialog(
             onDismissRequest = { showDisconnectWarning = false },
             title = { Text(str(R.string.simple_disconnect), fontFamily = Vazirmatn) },
@@ -735,10 +736,7 @@ class SimpleActivity : BaseComponentActivity() {
                     .padding(horizontal = 22.dp, vertical = 14.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Header(
-                    onLanguage = { showLanguageDialog = true },
-                    onReloadSubscription = { showDetails = true }
-                )
+                Header()
 
                 if (downloading) {
                     Spacer(Modifier.height(10.dp))
@@ -809,9 +807,8 @@ class SimpleActivity : BaseComponentActivity() {
 
                     }
                 }
-                TextButton(onClick = { showDetails = true }) {
-                    Text(str(R.string.simple_details), fontFamily = Vazirmatn, color = TextSecondary)
-                }
+
+                Footer()
             }
         }
 
@@ -829,7 +826,7 @@ class SimpleActivity : BaseComponentActivity() {
     }
 
     @Composable
-    private fun Header(onLanguage: () -> Unit, onReloadSubscription: () -> Unit) {
+    private fun Header() {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
@@ -840,12 +837,12 @@ class SimpleActivity : BaseComponentActivity() {
                     .clip(RoundedCornerShape(14.dp))
                     .background(CardBg)
                     .border(1.dp, CardBorder, RoundedCornerShape(14.dp))
-                    .combinedClickable(onClick = { showKillSwitch = true }, onLongClick = onReloadSubscription),
+                    ,
                 contentAlignment = Alignment.Center
             ) {
                 Image(
                     painter = painterResource(R.drawable.ic_stat_sahand),
-                    contentDescription = str(R.string.kill_switch_title),
+                    contentDescription = null,
                     colorFilter = ColorFilter.tint(AccentGreen),
                     modifier = Modifier.size(22.dp)
                 )
@@ -872,17 +869,25 @@ class SimpleActivity : BaseComponentActivity() {
                 )
             }
 
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(CardBg)
-                    .border(1.dp, CardBorder, RoundedCornerShape(12.dp))
-                    .clickable(onClick = { showTheme = true }),
-                contentAlignment = Alignment.Center
-            ) {
-                Text("◐", color = TextPrimary, fontSize = 24.sp)
+            Row {
+                IconAction(R.string.simple_theme, if (MaterialTheme.colorScheme.background.luminance() < 0.5f) R.drawable.ic_day else R.drawable.ic_night) { showTheme = true }
+                IconAction(R.string.simple_language, R.drawable.ic_translate_24dp) { showLanguageDialog = true }
             }
+        }
+    }
+
+    @Composable
+    private fun Footer() {
+        Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+            IconAction(R.string.simple_update_check, R.drawable.ic_check_update_24dp) { updater.checkManually() }
+            IconAction(R.string.kill_switch_title, R.drawable.ic_privacy_24dp) { showKillSwitch = true }
+        }
+    }
+
+    @Composable
+    private fun IconAction(@StringRes label: Int, image: Int, onClick: () -> Unit) {
+        IconButton(onClick = onClick, modifier = Modifier.size(48.dp)) {
+            Icon(painter = painterResource(image), contentDescription = str(label), tint = TextSecondary, modifier = Modifier.size(24.dp))
         }
     }
 
@@ -905,51 +910,23 @@ class SimpleActivity : BaseComponentActivity() {
         }
     }
 
-    /**
-     * Rotation that is driven by the frame clock instead of Compose's animation APIs.
-     *
-     * Some phones report animator_duration_scale = 0 (developer options, battery saver or the
-     * "remove animations" accessibility switch). Compose animations honour that flag and freeze,
-     * which made the loading motion disappear; a frame loop keeps the feedback alive.
-     */
+    /** Only the search field moves. Idle is still; accessibility reduction wins. */
     @Composable
-    private fun rememberFrameAngle(active: Boolean, periodMs: Int = 1700): Float {
-        var angle by remember { mutableFloatStateOf(0f) }
+    private fun rememberSearchPhase(active: Boolean): Float {
+        var phase by remember { mutableFloatStateOf(0f) }
         LaunchedEffect(active) {
+            phase = 0f
             if (!active) return@LaunchedEffect
             var start = 0L
-            while (true) {
+            while (Build.VERSION.SDK_INT < 26 || android.animation.ValueAnimator.areAnimatorsEnabled()) {
                 withFrameNanos { now ->
                     if (start == 0L) start = now
-                    val elapsed = (now - start) / 1_000_000f
-                    angle = (elapsed % periodMs) / periodMs * 360f
+                    phase = ((now - start) / 1_000_000f % 2600f) / 2600f
                 }
             }
+            phase = 0f
         }
-        return angle
-    }
-
-    /** One-shot 0..1 ramp driven by frames, used for the connection ripple. */
-    @Composable
-    private fun rememberFrameRamp(trigger: Boolean, durationMs: Int = 1300): Float {
-        var progress by remember { mutableFloatStateOf(0f) }
-        LaunchedEffect(trigger) {
-            if (!trigger) {
-                progress = 0f
-                return@LaunchedEffect
-            }
-            var start = 0L
-            var finished = false
-            while (!finished) {
-                withFrameNanos { now ->
-                    if (start == 0L) start = now
-                    val t = ((now - start) / 1_000_000f / durationMs).coerceIn(0f, 1f)
-                    progress = t
-                    finished = t >= 1f
-                }
-            }
-        }
-        return progress
+        return phase
     }
 
     @Composable
@@ -967,14 +944,9 @@ class SimpleActivity : BaseComponentActivity() {
         }
         val accent by animateColorAsState(target, tween(450), label = "accent")
 
-        val rotation = rememberFrameAngle(active = busy)
-        val pulse = 1f + 0.045f * kotlin.math.sin(Math.toRadians(rotation.toDouble())).toFloat()
-        val ripple = rememberFrameRamp(trigger = connected, durationMs = 1400)
-        val discScale by animateFloatAsState(
-            targetValue = if (connected) 1.03f else 1f,
-            animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
-            label = "disc"
-        )
+        val motionEnabled = Build.VERSION.SDK_INT < 26 || android.animation.ValueAnimator.areAnimatorsEnabled()
+        val phase = rememberSearchPhase(active = busy && motionEnabled)
+        val settle by animateFloatAsState(if (connected) 1f else 0f, tween(900), label = "secure-field")
 
         Box(
             modifier = Modifier.size((240 * LocalDensity.current.fontScale.coerceAtMost(1.5f)).dp),
@@ -996,89 +968,37 @@ class SimpleActivity : BaseComponentActivity() {
 
             val track = CardBorder
             Canvas(modifier = Modifier.fillMaxSize()) {
-                val strokeWidth = 11.dp.toPx()
-                val inset = strokeWidth / 2f
-                val arcSize = Size(size.width - strokeWidth, size.height - strokeWidth)
-
-                drawArc(
-                    color = track,
-                    startAngle = 0f,
-                    sweepAngle = 360f,
-                    useCenter = false,
-                    topLeft = Offset(inset, inset),
-                    size = arcSize,
-                    style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
-                )
-
-                // Expanding waves right after the connection is established.
-                if (connected && ripple > 0f && ripple < 1f) {
-                    val progress = ripple
-                    val base = size.minDimension / 2f
-                    for (wave in 0..1) {
-                        val t = (progress - wave * 0.18f).coerceIn(0f, 1f)
-                        if (t <= 0f) continue
-                        drawCircle(
-                            color = accent.copy(alpha = 0.28f * (1f - t)),
-                            radius = base * (0.72f + 0.42f * t),
-                            style = Stroke(width = 2.dp.toPx())
-                        )
+                val radius = size.minDimension * 0.43f
+                // A quiet contour field becomes outward travelling signal waves during search.
+                // On connection the contours settle into a complete protective boundary.
+                for (layer in 0..3) {
+                    val travel = if (busy) (phase + layer / 4f) % 1f else layer / 4f
+                    val r = radius * (0.76f + travel * 0.35f)
+                    val opacity = if (busy) (1f - travel) * 0.48f else 0.12f + settle * 0.15f
+                    val path = androidx.compose.ui.graphics.Path()
+                    for (step in 0..180) {
+                        val theta = step * kotlin.math.PI * 2 / 180
+                        val contour = 1f + (0.035f * (1f - settle)) * kotlin.math.sin(theta * 6 + phase * kotlin.math.PI * 2).toFloat()
+                        val point = Offset(center.x + r * contour * kotlin.math.cos(theta).toFloat(), center.y + r * contour * kotlin.math.sin(theta).toFloat())
+                        if (step == 0) path.moveTo(point.x, point.y) else path.lineTo(point.x, point.y)
                     }
+                    path.close()
+                    drawPath(path, if (busy || connected) accent.copy(alpha = opacity) else track.copy(alpha = 0.65f), style = Stroke(1.5.dp.toPx()))
                 }
-
                 if (connected) {
-                    drawArc(
-                        brush = Brush.sweepGradient(
-                            listOf(accent.copy(alpha = 0.55f), accent, accent.copy(alpha = 0.55f))
-                        ),
-                        startAngle = -90f,
-                        sweepAngle = 360f,
-                        useCenter = false,
-                        topLeft = Offset(inset, inset),
-                        size = arcSize,
-                        style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
-                    )
-                } else if (busy) {
-                    rotate(degrees = rotation, pivot = center) {
-                        drawArc(
-                            brush = Brush.sweepGradient(
-                                listOf(Color.Transparent, accent.copy(alpha = 0.15f), accent)
-                            ),
-                            startAngle = -90f,
-                            sweepAngle = 110f,
-                            useCenter = false,
-                            topLeft = Offset(inset, inset),
-                            size = arcSize,
-                            style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
-                        )
-                    }
-                    rotate(degrees = rotation + 180f, pivot = center) {
-                        drawArc(
-                            brush = Brush.sweepGradient(
-                                listOf(Color.Transparent, accent.copy(alpha = 0.12f), accent.copy(alpha = 0.75f))
-                            ),
-                            startAngle = -90f,
-                            sweepAngle = 70f,
-                            useCenter = false,
-                            topLeft = Offset(inset, inset),
-                            size = arcSize,
-                            style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
-                        )
-                    }
+                    drawCircle(accent.copy(alpha = 0.10f), radius * 0.83f)
+                    drawCircle(accent, radius * 0.84f, style = Stroke(2.dp.toPx()))
                 }
             }
 
             Box(
                 modifier = Modifier
                     .size((158 * LocalDensity.current.fontScale.coerceAtMost(1.5f)).dp)
-                    .graphicsLayer {
-                        val s = if (busy && !connected) pulse else discScale
-                        scaleX = s
-                        scaleY = s
-                    }
                     .clip(CircleShape)
                     .background(CardBg)
                     .border(1.dp, CardBorder, CircleShape)
-                    .clickable(enabled = onClick != null) { onClick?.invoke() },
+                    .semantics { stateDescription = title }
+                    .clickable(enabled = onClick != null, role = Role.Button, onClickLabel = subtitle ?: title) { onClick?.invoke() },
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {

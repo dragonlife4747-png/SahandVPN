@@ -59,4 +59,12 @@
     <string name="simple_tap_hint">Tap to find and connect automatically</string>
     <string name="simple_no_internet">No internet connection. Connect to Wi-Fi or mobile data first.</string>
     <string name="simple_disconnect_warning">If Android “Block connections without VPN” is enabled, internet stays blocked after disconnecting. If its status is unknown, check VPN settings.</string>
+<string name="simple_menu">Menu</string>
+<string name="simple_diagnostics">Share safe diagnostics</string>
+<string name="simple_update_check">Check for updates</string>
+    <string name="simple_session_elapsed">Verified session (this screen): %1$s s</string>
+    <string name="simple_bytes_unavailable">Tunnel traffic counters unavailable</string>
+    <string name="update_checking">Checking for updates…</string>
+    <string name="update_no_newer">No newer release is available.</string>
+    <string name="update_unavailable">Could not check for updates. Check your connection and try again.</string>
 </resources>

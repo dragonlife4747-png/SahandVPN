@@ -41,6 +41,7 @@ class SimpleProbeEngine(private val context: Context) {
 
     /** Rejects outbounds the core is known to refuse, before a whole batch pays for it. */
     private fun isSupportedOutbound(outbound: JsonObject): Boolean {
+        if (!OutboundSafety.accepts(outbound)) return false
         val protocol = outbound.get("protocol")?.asString ?: return false
         val settings = outbound.getAsJsonObject("settings")
         val stream = outbound.getAsJsonObject("streamSettings")

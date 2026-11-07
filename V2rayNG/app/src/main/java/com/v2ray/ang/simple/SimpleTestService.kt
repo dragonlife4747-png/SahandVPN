@@ -134,7 +134,9 @@ class SimpleTestService : Service() {
         val fast = LinkedHashMap<String, SimpleProbeEngine.ProbeResult>()
         val deepDone = HashSet<String>()
 
-        val shuffled = endpoints.keys.shuffled(kotlin.random.Random(System.currentTimeMillis()))
+        val history = EndpointHistory(java.io.File(filesDir, "endpoint_history.json"))
+        val shuffled = endpoints.keys.filter { history.eligible(it, System.currentTimeMillis()) }
+            .shuffled(kotlin.random.Random(System.currentTimeMillis()))
         val scanner = Executors.newFixedThreadPool(SimpleConfig.TCP_CONCURRENCY)
         var cursor = 0
         var scannedEndpoints = 0
@@ -163,6 +165,7 @@ class SimpleTestService : Service() {
                             val hp = endpointHostPort[key]
                             if (hp != null) {
                                 val latency = tcpProbe(hp.first, hp.second)
+                                runCatching { history.record(key, latency > 0, System.currentTimeMillis()) }
                                 if (latency > 0) reachable.add(key to latency)
                             }
                         }

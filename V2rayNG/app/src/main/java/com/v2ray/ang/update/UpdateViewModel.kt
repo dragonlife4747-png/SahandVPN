@@ -40,8 +40,14 @@ class UpdateViewModel(app: Application) : AndroidViewModel(app) {
 
     init { check() }
 
-    private fun check() {
+    fun checkManually() {
+        prefs.edit().remove("checked").remove("dismissed").apply()
+        check(manual = true)
+    }
+
+    private fun check(manual: Boolean = false) {
         viewModelScope.launch {
+            if (manual) android.widget.Toast.makeText(context, com.v2ray.ang.R.string.update_checking, android.widget.Toast.LENGTH_SHORT).show()
             val now = System.currentTimeMillis()
             val last = prefs.getLong("checked", 0)
             // Cache only successful responses, back off failures for 15 min; never block VPN use.
@@ -72,9 +78,12 @@ class UpdateViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 if (json != null) release = parse(json)
                 visible = release != null && prefs.getString("dismissed", null) != release?.tag
+                if (manual && release == null) android.widget.Toast.makeText(context, com.v2ray.ang.R.string.update_no_newer, android.widget.Toast.LENGTH_LONG).show()
                 if (release == null) withContext(Dispatchers.IO) { apk.delete(); partial.delete() }
             } catch (e: CancellationException) { throw e }
-            catch (_: Exception) { /* Offline/rate-limited checks are quiet; next entry retries after backoff. */ }
+            catch (_: Exception) {
+                if (manual) android.widget.Toast.makeText(context, com.v2ray.ang.R.string.update_unavailable, android.widget.Toast.LENGTH_LONG).show()
+            }
         }
     }
 

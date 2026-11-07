@@ -59,4 +59,12 @@
     <string name="simple_tap_hint">برای یافتن و اتصال خودکار لمس کنید</string>
     <string name="simple_no_internet">اینترنت در دسترس نیست. ابتدا وای‌فای یا اینترنت همراه را روشن کنید.</string>
     <string name="simple_disconnect_warning">اگر «مسدود کردن اتصال بدون VPN» در اندروید فعال باشد، پس از قطع اتصال اینترنت مسدود می‌ماند. اگر وضعیت مشخص نیست، تنظیمات VPN را بررسی کنید.</string>
+<string name="simple_menu">منو</string>
+<string name="simple_diagnostics">اشتراک گزارش امن</string>
+<string name="simple_update_check">بررسی به‌روزرسانی</string>
+    <string name="simple_session_elapsed">نشست تأییدشده (این صفحه): %1$s ثانیه</string>
+    <string name="simple_bytes_unavailable">شمارندهٔ ترافیک تونل در دسترس نیست</string>
+    <string name="update_checking">در حال بررسی به‌روزرسانی…</string>
+    <string name="update_no_newer">نسخهٔ جدیدتری در دسترس نیست.</string>
+    <string name="update_unavailable">بررسی به‌روزرسانی ممکن نشد. اینترنت را بررسی و دوباره تلاش کنید.</string>
 </resources>
