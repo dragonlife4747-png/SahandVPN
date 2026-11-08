@@ -3,18 +3,18 @@ package com.v2ray.ang.enums
 import androidx.core.os.LocaleListCompat
 import java.util.Locale
 
+/**
+ * Languages shipped with Sahand VPN. The set is deliberately small: Persian, English,
+ * Simplified/Traditional Chinese and Russian. Everything else falls back to English so the
+ * interface never mixes a half-translated locale with the simple screen.
+ */
 enum class Language(val code: String, val languageTag: String) {
     AUTO("auto", ""),
+    PERSIAN("fa", "fa"),
     ENGLISH("en", "en"),
     CHINA("zh-rCN", "zh-CN"),
     TRADITIONAL_CHINESE("zh-rTW", "zh-TW"),
-    VIETNAMESE("vi", "vi"),
-    RUSSIAN("ru", "ru"),
-    PERSIAN("fa", "fa"),
-    ARABIC("ar", "ar"),
-    AZERBAIJANI("az", "az"),
-    BANGLA("bn", "bn"),
-    BAKHTIARI("bqi-rIR", "bqi-IR");
+    RUSSIAN("ru", "ru");
 
     val locale: Locale?
         get() = languageTag.takeIf { it.isNotEmpty() }?.let(Locale::forLanguageTag)
@@ -37,6 +37,8 @@ enum class Language(val code: String, val languageTag: String) {
             val locale = Locale.forLanguageTag(languageTag)
             return when (locale.language) {
                 "en" -> ENGLISH
+                "fa" -> PERSIAN
+                "ru" -> RUSSIAN
                 "zh" -> if (
                     locale.script == "Hant" || locale.country in setOf("TW", "HK", "MO")
                 ) {
@@ -44,15 +46,8 @@ enum class Language(val code: String, val languageTag: String) {
                 } else {
                     CHINA
                 }
-
-                "vi" -> VIETNAMESE
-                "ru" -> RUSSIAN
-                "fa" -> PERSIAN
-                "ar" -> ARABIC
-                "az" -> AZERBAIJANI
-                "bn" -> BANGLA
-                "bqi" -> BAKHTIARI
-                else -> AUTO
+                // Unsupported phone languages stay on English instead of a half-translated locale.
+                else -> ENGLISH
             }
         }
     }

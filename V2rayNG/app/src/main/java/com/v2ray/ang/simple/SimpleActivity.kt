@@ -420,19 +420,20 @@ class SimpleActivity : BaseComponentActivity() {
                 runCatching { MmkvManager.decodeServerList(SimpleConfig.SUB_ID).size }.getOrDefault(0)
             }
             total = known
-            val saved = withContext(Dispatchers.IO) {
+            // Every launch starts from a clean slate: latency results from the previous session
+            // must not survive. A live tunnel keeps its points, because the health monitor still
+            // needs them to switch away from a dying point.
+            val vpnUp = vpnInterfaceActive() && vpnServiceAlive()
+            if (!vpnUp) {
+                withContext(Dispatchers.IO) { runCatching { SimpleConfig.clearSession(this@SimpleActivity) } }
+            }
+            val saved = if (!vpnUp) emptyList() else withContext(Dispatchers.IO) {
                 runCatching {
                     val alive = MmkvManager.decodeServerList(SimpleConfig.SUB_ID).toHashSet()
                     SimpleConfig.pruneWinners(this@SimpleActivity, alive)
                 }.getOrDefault(emptyList())
             }
-            winners = if (saved.isEmpty()) {
-                withContext(Dispatchers.IO) {
-                    runCatching { SimpleConfig.restoreIfEmpty(this@SimpleActivity) }.getOrDefault(emptyList())
-                }
-            } else {
-                saved
-            }
+            winners = saved
             bestDelay = winners.firstOrNull()?.delay ?: 0L
             tested = withContext(Dispatchers.IO) { SimpleConfig.lastTested(this@SimpleActivity) }
             if (known == 0) {
@@ -568,10 +569,8 @@ class SimpleActivity : BaseComponentActivity() {
             winners.isEmpty() -> getString(R.string.simple_no_points)
             else -> getString(R.string.simple_ready)
         }
-        if (flow.searchFinished(flowToken, saved.isNotEmpty()) == Action.CONNECT) {
-            connectAttempt = 0
-            launchConnect()
-        }
+        // Two-step screen: a finished search only unlocks the connect button, it never dials.
+        flow.cancel()
     }
 
     // ------------------------------------------------------------- actions
@@ -586,40 +585,72 @@ class SimpleActivity : BaseComponentActivity() {
 
     private var lastActionAt = 0L
 
-    private fun primaryAction() {
+    /**
+     * A tunnel interface can outlive the process for a moment after a force-stop. Requiring the
+     * service to still run prevents "connected" state from surviving into a fresh launch.
+     */
+    private fun vpnServiceAlive(): Boolean = runCatching {
+        val am = getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+        am.getRunningServices(200).any {
+            it.service.className == com.v2ray.ang.service.CoreVpnService::class.java.name
+        }
+    }.getOrDefault(false)
+
+    /** True while a tunnel interface exists, even if this screen was just reopened. */
+    private fun vpnInterfaceActive(): Boolean {
+        return runCatching {
+            val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+            cm.allNetworks.any { network ->
+                cm.getNetworkCapabilities(network)
+                    ?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN) == true
+            }
+        }.getOrDefault(false)
+    }
+
+    /** Button 1: find healthy points. Doubles as cancel while a search is running. */
+    private fun searchAction() {
         val now = android.os.SystemClock.elapsedRealtime()
-        if (now - lastActionAt < 900L) return
+        if (now - lastActionAt < 700L) return
+        lastActionAt = now
+        if (connected || connecting || downloading || booting) return
+        if (testing) { cancelFlow(); return }
+        if (!hasInternet()) {
+            errorLine = getString(R.string.simple_no_internet)
+            return
+        }
+        if (!flow.request(online = true, search = true)) return
+        userCancelled = false
+        flowToken = flow.generation
+        errorLine = ""
+        if (total == 0) syncSubscription(true) else startTest()
+    }
+
+    /** Button 2: connect to the best point found by the search. */
+    private fun connectAction() {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - lastActionAt < 700L) return
         lastActionAt = now
         if (connected) {
             querySystemVpnStatus()
             showDisconnectWarning = true // Unknown is explicitly caveated, never presented as off.
             return
         }
-        if (testing || connecting || downloading || flow.requested) { cancelFlow(); return }
-        if (booting) return
-        when (flow.begin(hasInternet(), winners.isNotEmpty())) {
-            Action.NONE -> {
-                errorLine = getString(R.string.simple_no_internet)
-                return
-            }
-
-            Action.CONNECT -> {
-                // Healthy points from the last search are good enough to connect immediately.
-                // The health loop verifies the tunnel within seconds and switches only if the
-                // chosen point really died, so the user does not wait for a full scan.
-                userCancelled = false
-                flowToken = flow.generation
-                connectAttempt = 0
-                launchConnect()
-                return
-            }
-
-            Action.SEARCH -> {
-                userCancelled = false
-                flowToken = flow.generation
-                if (total == 0) syncSubscription(true) else startTest()
-            }
+        if (connecting) { cancelFlow(); return }
+        if (testing || downloading || booting) return
+        if (winners.isEmpty()) {
+            errorLine = getString(R.string.simple_find_first)
+            return
         }
+        if (!hasInternet()) {
+            errorLine = getString(R.string.simple_no_internet)
+            return
+        }
+        if (!flow.request(online = true, search = false)) return
+        userCancelled = false
+        flowToken = flow.generation
+        connectAttempt = 0
+        errorLine = ""
+        launchConnect()
     }
 
     private fun cancelFlow() {
@@ -801,13 +832,31 @@ class SimpleActivity : BaseComponentActivity() {
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        StatusRing(
-                            connected = connected,
-                            busy = connecting || testing || downloading,
-                            title = if (connected) str(R.string.simple_connected) else if (connecting || testing || downloading) statusLine else str(R.string.simple_connect),
-                            subtitle = if (connecting || testing || downloading) str(R.string.simple_cancel) else if (connected) str(R.string.simple_disconnect) else null,
-                            onClick = { primaryAction() }
-                        )
+                        Box {
+                            StatusRing(
+                                connected = connected,
+                                busy = connecting || testing || downloading,
+                                enabled = connected || connecting || winners.isNotEmpty(),
+                                title = when {
+                                    connected -> str(R.string.simple_connected)
+                                    connecting || testing || downloading -> statusLine
+                                    else -> str(R.string.simple_connect)
+                                },
+                                subtitle = when {
+                                    connecting || testing || downloading -> str(R.string.simple_cancel)
+                                    connected -> str(R.string.simple_disconnect)
+                                    winners.isEmpty() -> str(R.string.simple_find_first)
+                                    else -> null
+                                },
+                                onClick = { connectAction() }
+                            )
+                            StepBadge(
+                                text = str(R.string.simple_step_two),
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(top = 24.dp, end = 26.dp)
+                            )
+                        }
 
                         Spacer(Modifier.height(16.dp))
                         if (connected) {
@@ -830,7 +879,14 @@ class SimpleActivity : BaseComponentActivity() {
                         }
 
                         Text(
-                            text = str(if (connected) R.string.simple_connected_hint else if (connecting || testing || downloading) R.string.simple_search_hint else R.string.simple_tap_hint),
+                            text = str(
+                                when {
+                                    connected -> R.string.simple_connected_hint
+                                    connecting || testing || downloading -> R.string.simple_search_hint
+                                    winners.isEmpty() -> R.string.simple_tap_hint
+                                    else -> R.string.simple_connect_chosen
+                                }
+                            ),
                             color = TextSecondary,
                             fontSize = 15.5.sp,
                             lineHeight = 25.sp,
@@ -865,6 +921,8 @@ class SimpleActivity : BaseComponentActivity() {
                         }
 
                         Spacer(Modifier.height(18.dp))
+
+                        SearchButton()
 
                     }
                 }
@@ -996,11 +1054,13 @@ class SimpleActivity : BaseComponentActivity() {
         busy: Boolean,
         title: String,
         subtitle: String?,
+        enabled: Boolean = true,
         onClick: (() -> Unit)? = null
     ) {
         val target = when {
             connected -> AccentGreen
             busy -> AccentBlue
+            !enabled -> CardBorder
             else -> AccentGreen
         }
         val accent by animateColorAsState(target, tween(450), label = "accent")
@@ -1059,13 +1119,13 @@ class SimpleActivity : BaseComponentActivity() {
                     .background(CardBg)
                     .border(1.dp, CardBorder, CircleShape)
                     .semantics { stateDescription = title }
-                    .clickable(enabled = onClick != null, role = Role.Button, onClickLabel = subtitle ?: title) { onClick?.invoke() },
+                    .clickable(enabled = enabled && onClick != null, role = Role.Button, onClickLabel = subtitle ?: title) { onClick?.invoke() },
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
                         text = title,
-                        color = TextPrimary,
+                        color = if (enabled || connected) TextPrimary else TextSecondary,
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold,
                         fontFamily = Vazirmatn,
@@ -1075,13 +1135,91 @@ class SimpleActivity : BaseComponentActivity() {
                         Spacer(Modifier.height(6.dp))
                         Text(
                             text = subtitle,
-                            color = accent,
-                            fontSize = 14.sp,
+                            color = if (enabled || connected) accent else TextSecondary,
+                            fontSize = if (enabled || connected) 14.sp else 11.sp,
                             fontWeight = FontWeight.Medium,
-                            fontFamily = Vazirmatn
+                            fontFamily = Vazirmatn,
+                            textAlign = TextAlign.Center,
+                            maxLines = 2,
+                            modifier = Modifier.padding(horizontal = 14.dp)
                         )
                     }
                 }
+            }
+        }
+    }
+
+    @Composable
+    private fun StepBadge(text: String, modifier: Modifier = Modifier) {
+        Box(
+            modifier = modifier
+                .size(24.dp)
+                .clip(CircleShape)
+                .background(CardBg)
+                .border(1.dp, CardBorder, CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = text,
+                color = TextSecondary,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = Vazirmatn
+            )
+        }
+    }
+
+    /** Button 1 of the two-step flow: finds healthy points and unlocks the ring. */
+    @Composable
+    private fun SearchButton() {
+        val enabled = !connected && !connecting && !downloading && !booting
+        val active = testing
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(58.dp)
+                .clip(RoundedCornerShape(18.dp))
+                .background(
+                    if (active) Brush.horizontalGradient(listOf(CardBg, CardBg))
+                    else Brush.horizontalGradient(listOf(AccentBlue, Color(0xFF2C6FD6)))
+                )
+                .border(
+                    1.dp,
+                    if (active) AccentBlue.copy(alpha = 0.45f) else CardBorder,
+                    RoundedCornerShape(18.dp)
+                )
+                .clickable(enabled = enabled) { searchAction() }
+                .padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            StepBadge(text = str(R.string.simple_step_one))
+            Spacer(Modifier.width(12.dp))
+            if (active) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    strokeWidth = 2.dp,
+                    color = AccentBlue
+                )
+                Spacer(Modifier.width(10.dp))
+            }
+            Text(
+                text = if (active) str(R.string.simple_searching) else str(R.string.simple_find),
+                color = if (enabled) TextPrimary else TextSecondary,
+                fontFamily = Vazirmatn,
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(Modifier.weight(1f))
+            if (winners.isNotEmpty()) {
+                Text(
+                    text = num(winners.size),
+                    color = AccentGreen,
+                    fontFamily = Vazirmatn,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp
+                )
             }
         }
     }
@@ -1113,6 +1251,21 @@ class SimpleActivity : BaseComponentActivity() {
                         label = "English",
                         selected = current == "en",
                         onClick = { onSelect("en") }
+                    )
+                    LanguageRow(
+                        label = "中文（简体）",
+                        selected = current == "zh-rCN",
+                        onClick = { onSelect("zh-rCN") }
+                    )
+                    LanguageRow(
+                        label = "中文（繁體）",
+                        selected = current == "zh-rTW",
+                        onClick = { onSelect("zh-rTW") }
+                    )
+                    LanguageRow(
+                        label = "Русский",
+                        selected = current == "ru",
+                        onClick = { onSelect("ru") }
                     )
                 }
             },

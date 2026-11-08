@@ -56,7 +56,7 @@
     <string name="simple_theme_light">Day</string>
     <string name="simple_theme_dark">Night</string>
     <string name="simple_cancel">Cancel</string>
-    <string name="simple_tap_hint">Tap to find and connect automatically</string>
+    <string name="simple_tap_hint">Tap “Find connection point” to start</string>
     <string name="simple_no_internet">No internet connection. Connect to Wi-Fi or mobile data first.</string>
     <string name="simple_disconnect_warning">If Android “Block connections without VPN” is enabled, internet stays blocked after disconnecting. If its status is unknown, check VPN settings.</string>
 <string name="simple_menu">Menu</string>
@@ -69,4 +69,5 @@
     <string name="update_unavailable">Could not check for updates. Check your connection and try again.</string>
     <string name="simple_exit_loading">Checking VPN exit…</string>
     <string name="simple_exit_unavailable">VPN exit IP unavailable</string>
+    <string name="simple_find_first">Find a connection point first</string>
 </resources>

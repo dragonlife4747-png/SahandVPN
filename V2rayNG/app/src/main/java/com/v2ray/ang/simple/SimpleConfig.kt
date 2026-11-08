@@ -124,6 +124,11 @@ object SimpleConfig {
         write(context, read(context).copy(winners = trimmed))
     }
 
+    /** Drops every result from the previous session so the next search starts from scratch. */
+    fun clearSession(context: Context) = locked(context) {
+        write(context, TestState())
+    }
+
     fun clearWinners(context: Context) {
         write(context, read(context).copy(winners = emptyList()))
     }

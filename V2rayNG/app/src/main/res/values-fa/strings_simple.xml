@@ -56,7 +56,7 @@
     <string name="simple_theme_light">روز</string>
     <string name="simple_theme_dark">شب</string>
     <string name="simple_cancel">لغو</string>
-    <string name="simple_tap_hint">برای یافتن و اتصال خودکار لمس کنید</string>
+    <string name="simple_tap_hint">برای شروع، «یافتن نقطه اتصال» را بزنید</string>
     <string name="simple_no_internet">اینترنت در دسترس نیست. ابتدا وای‌فای یا اینترنت همراه را روشن کنید.</string>
     <string name="simple_disconnect_warning">اگر «مسدود کردن اتصال بدون VPN» در اندروید فعال باشد، پس از قطع اتصال اینترنت مسدود می‌ماند. اگر وضعیت مشخص نیست، تنظیمات VPN را بررسی کنید.</string>
 <string name="simple_menu">منو</string>
@@ -69,4 +69,5 @@
     <string name="update_unavailable">بررسی به‌روزرسانی ممکن نشد. اینترنت را بررسی و دوباره تلاش کنید.</string>
     <string name="simple_exit_loading">در حال بررسی آی‌پی خروجی…</string>
     <string name="simple_exit_unavailable">آی‌پی خروجی در دسترس نیست</string>
+    <string name="simple_find_first">ابتدا نقطهٔ اتصال را پیدا کنید</string>
 </resources>

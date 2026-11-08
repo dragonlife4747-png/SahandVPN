@@ -22,6 +22,18 @@ class SingleActionPolicy {
         if (!found) { requested = false; return Action.NONE }
         return Action.CONNECT
     }
+    /**
+     * Two-button screen: the search and the connect action are requested explicitly instead of
+     * being derived from the cache state. Returns false when a request is already in flight.
+     */
+    fun request(online: Boolean, search: Boolean): Boolean {
+        if (requested || !online) return false
+        generation++
+        requested = true
+        searching = search
+        return true
+    }
+
     fun cancel() { requested = false; searching = false }
     fun accepts(token: Long): Boolean = requested && token == generation
     fun exhausted(cached: Boolean): Boolean = searchFinished(generation, cached) == Action.CONNECT
