@@ -1,0 +1,90 @@
+# SahandVPN 1.11 (planned) vs 1.10 
+# Simple Menu Consolidation and Settings Features
+
+# 1.16 changes (1.10 -> 1.11) focused on settings menu consolidation and new settings/features:
+# - Single central settings menu (formerly separate toggles for updater, theme, kill-switch)
+# - Language (Persian/English) - existing Persian language already present
+# - Theme persistence (system/light/dark) - UI simplicity (ThemeManager)
+# - Kill-switch dialog with system VPN status and settings navigation
+# - Diagnostic report export with timer and RX/TX counters (planned for 1.11)
+
+# Visual UI changes (based on 1.10) processed by تمان:
+# - Header: Right side three vertically stacked dots (today's action)
+# - Central ring: Primary action (connect/cancel/disconnect)
+# - Middle row: Title "Sahand VPN", subtitle "Simple subtitle"
+# - Bottom row: Details link (opens language, kill-switch, theme dialogs)
+# - Kill-switch dialog: Show Always-on VPN and Lockdown status from system
+# - Theme dialog: System/Light/Dark selection (ThemeManager.setThemeMode(mode))
+# - Language dialog: Persian/English/System (AppLocaleManager.setApplicationLanguage)
+# - UpdateDialog: Already present in 1.10: check-update, theme, kill-switch consolidated
+# - No separate icons for those on home (per 1.10 requirement)
+
+# API and functional overview (current 1.10 + future planned for 1.11):
+# - Kill-switch system integration via CoreVpnService (https://developer.android.com/guide/topics/connectivity/vpn#vpn_permission)
+# - System status: CoreVpnService broadcasts SYSTEM_STATUS intent with alwaysOn and lockdown extras
+# - Always-on VPN enforcement: Settings.ACTION_VPN_SETTINGS, never implement an app preference as equivalent OS lockdown
+# - Theme persistence: ThemeManager.setThemeMode(mode) loads from SharedPreferences
+# - Language selection: AppLocaleManager.setApplicationLanguage(code) recreates activity
+# - Diagnostics: Use android.os.StatFs, TrafficStats, WifiManager for counters (planned in 1.11)
+# - Endpoint choice: SimpleConfig.Winner.sort by delay, improve endpoint selection from persisted history
+# - Resource tuning: bound SimpleConfig.TARGET_WORKING, TCP_CONCURRENCY, SCAN_CHUNK
+# - TLS config: UpdateCheckerManager with strict TLS verification
+# - Log sanitization: no secrets or endpoints in logs
+# - Connection timer: LaunchCore plus TrafficStats.getTotalRxBytes/getTotalTxBytes
+
+# Key 1.10 changes to enable 1.11:
+# - Implemented SingleActionPolicy and SingleActionPolicyTest (0d67c54)
+# - Theme and language dialogs (ThemeManager and AppLocaleManager)
+# - KillSwitchDialog and querySystemVpnStatus integration
+# - Reduced branching logic (booting, testing, scanning, downloading, connecting)
+# - Single central action flow for retest, search, connect
+
+# Tech specifics (current 1.10):
+# - SimpleActivity.kt line 183: private val flow = SingleActionPolicy()
+# - ThemeManager.setThemeMode("0"|"1"|"2") – loads/saves in SharedPreferences, applies to entire surface
+# - CoreVpnService broadcasts SYSTEM_STATUS intent, SimpleActivity binds and reads via Messenger
+# - UpdateDialog: from UpdateViewModel, one dialog covering all update actions
+# - SimpleConfig.SUB_URL = "https://raw.githubusercontent.com/SoliSpirit/v2ray-configs/refs/heads/main/all_configs.txt"
+# - SimpleConfig.Winner stores guid and delay, sorting by delay for best endpoints
+# - SimpleProbeEngine.probe returns ProbeResult(guid, delayMs, httpsOk, bytesPerSecond)
+# - SimpleTestService two-stage: TCP reachability (fast) + core probes (deep)
+# - SimpleConfig.loadWinners() persists search results in simple_state.json
+# - SimpleConfig.VERSION variables: TARGET_WORKING=5, TCP_CONCURRENCY=8, SCAN_CHUNK=120
+
+# 1.10 -> 1.11 targets:
+# - Consolidate kill-switch/updater/theme into single settings menu
+# - Export diagnostics: timer, RX/TX counters, label VPN-specific vs estimated, redact secrets
+# - Resource tuning: adjust concurrency, caching intervals
+# - TLS/SSL hardening: reject unsafe configs, validate cert pinning
+# - Log sanitization: remove endpoint/secrets, protect diagnostics
+# - Endpoint selection: use persisted success/failure history and cooldown
+# - Physical phone not tested explicitly (emulator only)
+
+# Note: Some work already completed in 1.10 that enables the above; 1.11 focuses on:
+# - finishing the settings menu consolidation
+# - completing diagnostics export
+# - hardening TLS/SSL and logs
+# - improving endpoint selection
+# - resource tuning
+
+# 1.10 -> 1.11 scope changes:
+# - Language already present (no new work)
+# - Theme persistence already present (no new work)
+# - Kill-switch dialog present (no new work)
+# - UpdateDialog present (no new work)
+# - New: single settings menu consolidation (from separate controls)
+# - New: diagnostics export (timer/RX/TX counters, VPN vs estimated labeling)
+# - New: endpoint selection improvement (history/cooldown)
+# - New: resource tuning (concurrency/cache intervals)
+# - New: TLS/SSL hardening (reject unsafe, cert validation)
+# - New: log sanitization (no secrets/endpoint logs)
+# - New: actual IPv6/DNS leak testing/verification
+
+# Summary: 1.11 builds on 1.10's improvements (single-action policy, theme/language, kill-switch, updater dialog) and adds:
+# - Single settings menu consolidating controls
+# - Diagnostic export with detailed traffic counters
+# - Improved endpoint selection
+# - Resource tuning and hardening
+# - Leak testing and verification
+# - TLS/SSL validation
+# - Log sanitization

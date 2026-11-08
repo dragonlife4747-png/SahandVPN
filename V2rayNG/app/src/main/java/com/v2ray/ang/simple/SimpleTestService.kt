@@ -139,7 +139,7 @@ class SimpleTestService : Service() {
             val results = engine.probe(cached, deep = true, timeoutMs = 6_000)
             tested.addAndGet(cached.size)
             if (!cancelled.get()) {
-                working.addAll(results.filter { it.httpsOk && it.delayMs > 0 }
+                working.addAll(results.filter { it.delayMs > 0 }
                     .map { SimpleConfig.Winner(it.guid, it.delayMs) })
                 SimpleConfig.updateSearch(this, runId, working)
                 publish(SimpleConfig.PHASE_PROBING, force = true)
@@ -272,7 +272,7 @@ class SimpleTestService : Service() {
                     "SimpleTest: deep finalists=${ids.size} answered=${deep.size} " +
                         deep.joinToString { "${it.delayMs}ms/https=${it.httpsOk}/${it.bytesPerSecond / 1024}KBps" }
                 )
-                deep.filter { it.httpsOk && it.delayMs > 0 }
+                deep.filter { it.delayMs > 0 }
                     .sortedWith(
                         compareByDescending<SimpleProbeEngine.ProbeResult> { it.httpsOk }
                             .thenByDescending { it.bytesPerSecond }

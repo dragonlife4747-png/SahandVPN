@@ -67,4 +67,6 @@
     <string name="update_checking">در حال بررسی به‌روزرسانی…</string>
     <string name="update_no_newer">نسخهٔ جدیدتری در دسترس نیست.</string>
     <string name="update_unavailable">بررسی به‌روزرسانی ممکن نشد. اینترنت را بررسی و دوباره تلاش کنید.</string>
+    <string name="simple_exit_loading">در حال بررسی آی‌پی خروجی…</string>
+    <string name="simple_exit_unavailable">آی‌پی خروجی در دسترس نیست</string>
 </resources>

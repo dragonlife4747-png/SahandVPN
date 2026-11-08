@@ -336,10 +336,21 @@ object CoreServiceManager {
         }
     }
 
-    /** One 204 request through the running tunnel, via the local SOCKS inbound. */
+    /**
+     * One 204 request through the running tunnel, via the local SOCKS inbound.
+     *
+     * Plain HTTP is tried first on purpose: a TLS handshake failure against a single host is not
+     * proof that the tunnel is dead, and treating it as such made the daemon switch points (each
+     * switch lands on a slower profile) on healthy connections.
+     */
     private fun tunnelHealthy(): Boolean {
         val port = runCatching { SettingsManager.getSocksPort() }.getOrDefault(0)
         if (port <= 0) return false
+        if (probeThroughTunnel(port, HEALTH_CHECK_URL_HTTP)) return true
+        return probeThroughTunnel(port, HEALTH_CHECK_URL_HTTPS)
+    }
+
+    private fun probeThroughTunnel(port: Int, url: String): Boolean {
         return try {
             val client = OkHttpClient.Builder()
                 .proxy(Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", port)))
@@ -351,10 +362,10 @@ object CoreServiceManager {
                 .retryOnConnectionFailure(false)
                 .build()
             val request = Request.Builder()
-                .url(HEALTH_CHECK_URL)
+                .url(url)
                 .header("Connection", "close")
                 .build()
-            client.newCall(request).execute().use { response -> response.code == 204 }
+            client.newCall(request).execute().use { response -> response.code in 200..204 }
         } catch (_: Throwable) {
             false
         }
@@ -366,7 +377,11 @@ object CoreServiceManager {
         current?.let { failedPoints.add(it) }
 
         val candidates = runCatching { SimpleConfig.loadWinners(service) }.getOrDefault(emptyList())
-        val next = candidates.firstOrNull { it.guid != current && it.guid !in failedPoints }
+        val alternatives = candidates.filter { it.guid != current && it.guid !in failedPoints }
+        // Prefer a replacement of comparable quality; a point ten times slower is not an upgrade.
+        val currentDelay = candidates.firstOrNull { it.guid == current }?.delay ?: 0L
+        val tolerance = if (currentDelay > 0) maxOf(currentDelay * 2, currentDelay + 200) else Long.MAX_VALUE
+        val next = alternatives.firstOrNull { it.delay <= tolerance } ?: alternatives.firstOrNull()
         if (next == null) {
             LogUtil.w(AppConfig.TAG, "Health: no alternative point left, keeping the current one")
             failedPoints.clear()
@@ -398,6 +413,8 @@ object CoreServiceManager {
             val tunFd = currentVpnInterface
 
             isReloading = true
+            reliability.accept(reliability.generation, false)
+            MessageHelper.sendMsg2UI(service, AppConfig.MSG_STATE_START, "")
             connectionTestScope.coroutineContext.cancelChildren()
             LogUtil.i(AppConfig.TAG, "StartCore-Manager: Core reload start...")
 
@@ -417,10 +434,11 @@ object CoreServiceManager {
         }
     }
 
-    private const val HEALTH_CHECK_URL = "https://www.gstatic.com/generate_204"
+    private const val HEALTH_CHECK_URL_HTTP = "http://www.gstatic.com/generate_204"
+    private const val HEALTH_CHECK_URL_HTTPS = "https://www.gstatic.com/generate_204"
     private const val HEALTH_FIRST_CHECK_DELAY_MS = 25_000L
     private const val HEALTH_INTERVAL_MS = 35_000L
-    private const val HEALTH_FAILURES_BEFORE_SWITCH = 2
+    private const val HEALTH_FAILURES_BEFORE_SWITCH = 3
 
     /**
      * Queries and resets all outbound traffic counters in one core call.

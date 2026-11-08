@@ -67,4 +67,6 @@
     <string name="update_checking">Checking for updates…</string>
     <string name="update_no_newer">No newer release is available.</string>
     <string name="update_unavailable">Could not check for updates. Check your connection and try again.</string>
+    <string name="simple_exit_loading">Checking VPN exit…</string>
+    <string name="simple_exit_unavailable">VPN exit IP unavailable</string>
 </resources>

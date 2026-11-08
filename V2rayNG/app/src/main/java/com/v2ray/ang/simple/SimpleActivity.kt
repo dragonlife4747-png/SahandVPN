@@ -186,6 +186,12 @@ class SimpleActivity : BaseComponentActivity() {
         )
     }
 
+    private var exitIdentity by mutableStateOf<ExitIdentity?>(null)
+    private var exitLoading by mutableStateOf(false)
+    private val exitLookup = ExitLookup(SocksExitTransport { task -> runOnUiThread(task) }) { identity, loading ->
+        exitIdentity = identity
+        exitLoading = loading
+    }
     private val flow = SingleActionPolicy()
     private var flowToken = 0L
     private var userCancelled = false
@@ -328,19 +334,25 @@ class SimpleActivity : BaseComponentActivity() {
             if (testing || downloading) return
             when (safe.getIntExtra("key", 0)) {
                 AppConfig.MSG_STATE_START -> {
+                    exitLookup.clear()
                     connected = false
                     connecting = true
                     statusLine = getString(R.string.simple_connecting)
                 }
                 AppConfig.MSG_STATE_RUNNING, AppConfig.MSG_STATE_START_SUCCESS -> {
                     if (!connected) verifiedAt = android.os.SystemClock.elapsedRealtime()
+                    // The requested action is fulfilled: a later tap must start a new flow
+                    // instead of being treated as a cancel.
+                    flow.cancel()
                     connecting = false
                     connected = true
+                    exitLookup.verified(com.v2ray.ang.handler.SettingsManager.getSocksPort())
                     errorLine = ""
                     statusLine = getString(R.string.simple_connected)
                 }
 
                 AppConfig.MSG_STATE_NOT_RUNNING, AppConfig.MSG_STATE_STOP_SUCCESS -> {
+                    exitLookup.clear()
                     connected = false
                     connecting = false
                     bestDelay = 0L
@@ -349,12 +361,14 @@ class SimpleActivity : BaseComponentActivity() {
                 }
 
                 AppConfig.MSG_STATE_START_FAILURE -> {
+                    exitLookup.clear()
                     connecting = false
                     connected = false
                     if (flow.accepts(flowToken) && connectAttempt < winners.size) {
                         // Silent failover: try the next best healthy profile.
                         launchConnect()
                     } else {
+                        flow.cancel()
                         errorLine = getString(R.string.simple_connect_failed)
                         statusLine = getString(R.string.simple_error)
                     }
@@ -392,6 +406,7 @@ class SimpleActivity : BaseComponentActivity() {
     }
 
     override fun onDestroy() {
+        exitLookup.clear()
         runCatching { unregisterReceiver(testReceiver) }
         runCatching { unregisterReceiver(serviceReceiver) }
         super.onDestroy()
@@ -498,17 +513,19 @@ class SimpleActivity : BaseComponentActivity() {
             if (!testing) return
             val saved = runCatching { SimpleConfig.loadWinners(this@SimpleActivity) }
                 .getOrDefault(emptyList())
-            // No progress for 25s means the search process is gone or wedged: finish with
-            // whatever healthy points were already persisted.
+            // A silent search is not necessarily a dead one: on a slow device a single scan round
+            // (120 endpoints) plus a deep stage can take well over a minute. Only give up after a
+            // generous window, and keep the points that were already persisted.
             val stalled = lastProgressAt > 0 &&
-                System.currentTimeMillis() - lastProgressAt > 25_000L
+                System.currentTimeMillis() - lastProgressAt > 90_000L
             val state = SimpleConfig.read(this@SimpleActivity)
             if (state.runId == searchRunId && state.phase != "running") {
                 applyTestOutcome(saved)
                 return
             }
             if (stalled) {
-                cancelTest()
+                SimpleTestService.cancel(this@SimpleActivity)
+                applyTestOutcome(saved)
                 flow.cancel()
                 return
             }
@@ -567,7 +584,12 @@ class SimpleActivity : BaseComponentActivity() {
         } == true }
     }
 
+    private var lastActionAt = 0L
+
     private fun primaryAction() {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - lastActionAt < 900L) return
+        lastActionAt = now
         if (connected) {
             querySystemVpnStatus()
             showDisconnectWarning = true // Unknown is explicitly caveated, never presented as off.
@@ -575,17 +597,33 @@ class SimpleActivity : BaseComponentActivity() {
         }
         if (testing || connecting || downloading || flow.requested) { cancelFlow(); return }
         if (booting) return
-        // The search service retests cached winners before doing a broad scan.
-        if (flow.begin(hasInternet(), false) == Action.NONE) {
-            errorLine = getString(R.string.simple_no_internet)
-            return
+        when (flow.begin(hasInternet(), winners.isNotEmpty())) {
+            Action.NONE -> {
+                errorLine = getString(R.string.simple_no_internet)
+                return
+            }
+
+            Action.CONNECT -> {
+                // Healthy points from the last search are good enough to connect immediately.
+                // The health loop verifies the tunnel within seconds and switches only if the
+                // chosen point really died, so the user does not wait for a full scan.
+                userCancelled = false
+                flowToken = flow.generation
+                connectAttempt = 0
+                launchConnect()
+                return
+            }
+
+            Action.SEARCH -> {
+                userCancelled = false
+                flowToken = flow.generation
+                if (total == 0) syncSubscription(true) else startTest()
+            }
         }
-        userCancelled = false
-        flowToken = flow.generation
-        if (total == 0) syncSubscription(true) else startTest()
     }
 
     private fun cancelFlow() {
+        exitLookup.clear()
         userCancelled = true
         flow.cancel()
         pendingConnect = false
@@ -772,6 +810,24 @@ class SimpleActivity : BaseComponentActivity() {
                         )
 
                         Spacer(Modifier.height(16.dp))
+                        if (connected) {
+                            val identity = exitIdentity
+                            if (identity != null) {
+                                val country = Locale("", identity.countryCode).getDisplayCountry(resources.configuration.locales[0])
+                                Text("${identity.flag}  $country (${identity.countryCode})", fontFamily = Vazirmatn,
+                                    color = TextPrimary, fontSize = 16.sp, textAlign = TextAlign.Center,
+                                    modifier = Modifier.fillMaxWidth())
+                                Text(identity.ip, color = TextSecondary, fontSize = 15.sp,
+                                    style = androidx.compose.ui.text.TextStyle(textDirection = androidx.compose.ui.text.style.TextDirection.Ltr),
+                                    textAlign = TextAlign.Center, softWrap = true,
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp))
+                            } else {
+                                Text(str(if (exitLoading) R.string.simple_exit_loading else R.string.simple_exit_unavailable),
+                                    fontFamily = Vazirmatn, color = TextSecondary, fontSize = 14.sp,
+                                    textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+                            }
+                            Spacer(Modifier.height(12.dp))
+                        }
 
                         Text(
                             text = str(if (connected) R.string.simple_connected_hint else if (connecting || testing || downloading) R.string.simple_search_hint else R.string.simple_tap_hint),
