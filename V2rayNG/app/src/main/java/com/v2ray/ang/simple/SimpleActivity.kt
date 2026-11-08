@@ -126,6 +126,56 @@ private val AccentRed = Color(0xFFFF8F84)
  * healthy profile is used.
  */
 class SimpleActivity : BaseComponentActivity() {
+    private val updater by lazy { androidx.lifecycle.ViewModelProvider(this)[com.v2ray.ang.update.UpdateViewModel::class.java] }
+    private val installPermissionLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        updater.awaitingPermission = false
+        if (Build.VERSION.SDK_INT < 26 || packageManager.canRequestPackageInstalls()) launchUpdateInstaller()
+    }
+    private fun launchUpdateInstaller() {
+        if (!updater.verifyReady()) return
+        try {
+            if (Build.VERSION.SDK_INT >= 26 && !packageManager.canRequestPackageInstalls()) {
+                updater.awaitingPermission = true
+                installPermissionLauncher.launch(Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    android.net.Uri.parse("package:$packageName")))
+                return
+            }
+            val uri = androidx.core.content.FileProvider.getUriForFile(this, "$packageName.updates", updater.apk)
+            val installIntent = Intent(Intent.ACTION_VIEW)
+                .setDataAndType(uri, "application/vnd.android.package-archive")
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            installIntent.clipData = android.content.ClipData.newRawUri("Sahand VPN update", uri)
+            startActivity(installIntent)
+        } catch (_: Exception) { updater.installerFailed() }
+    }
+
+    @Composable
+    private fun UpdateDialog() {
+        val u = updater
+        if (!u.visible) return
+        LaunchedEffect(u.ready) {
+            if (u.ready && u.autoInstallPending) {
+                u.autoInstallPending = false
+                launchUpdateInstaller()
+            }
+        }
+        AlertDialog(
+            onDismissRequest = { if (!u.busy) u.dismiss() },
+            containerColor = CardBg,
+            title = { Text(stringResource(R.string.update_title, u.release?.tag.orEmpty()), fontFamily = Vazirmatn, color = TextPrimary) },
+            text = { Column {
+                Text(stringResource(when { u.failed -> R.string.update_error; u.busy -> R.string.update_downloading; u.ready -> R.string.update_permission; else -> R.string.update_message }), fontFamily = Vazirmatn, color = TextSecondary)
+                if (u.busy) {
+                    LinearProgressIndicator(progress = { u.progress / 100f }, modifier = Modifier.fillMaxWidth().padding(top = 16.dp))
+                    Text(java.text.NumberFormat.getPercentInstance().format(u.progress / 100.0), fontFamily = Vazirmatn, color = TextSecondary)
+                }
+            } },
+            confirmButton = { if (!u.busy) TextButton(onClick = { if (u.ready) launchUpdateInstaller() else u.download() }) {
+                Text(stringResource(if (u.ready) R.string.update_install else if (u.failed) R.string.update_retry else R.string.update_download), fontFamily = Vazirmatn)
+            } },
+            dismissButton = { TextButton(onClick = { u.dismiss() }) { Text(stringResource(if (u.busy) R.string.update_cancel else R.string.update_later), fontFamily = Vazirmatn) } }
+        )
+    }
 
     private var booting by mutableStateOf(true)
     private var downloading by mutableStateOf(false)
@@ -531,6 +581,7 @@ class SimpleActivity : BaseComponentActivity() {
 
     @Composable
     override fun ScreenContent() {
+        UpdateDialog()
         Box(
             modifier = Modifier
                 .fillMaxSize()

@@ -40,4 +40,14 @@
     <string name="simple_step_one">1</string>
     <string name="simple_step_two">2</string>
     <string name="simple_testing_notification">Searching for a connection point…</string>
+    <string name="update_title">Sahand VPN %1$s is available</string>
+    <string name="update_message">Download the signed update from GitHub. Android will ask you to confirm installation.</string>
+    <string name="update_downloading">Downloading and verifying update…</string>
+    <string name="update_permission">Allow Sahand VPN to install updates in Android settings, then confirm installation.</string>
+    <string name="update_error">Update failed or could not be verified. Check your connection and retry.</string>
+    <string name="update_download">Download update</string>
+    <string name="update_install">Install update</string>
+    <string name="update_retry">Retry</string>
+    <string name="update_later">Not now</string>
+    <string name="update_cancel">Cancel download</string>
 </resources>
